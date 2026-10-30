@@ -6,6 +6,9 @@ import EntryDialog from "./EntryDialog";
 import PasswordDialog from "./PasswordDialog";
 import CreateProjectDialog from "./ProjectDialog";
 import ChatWidget from "./ChatWidget";
+import ActivityLog from "./ActivityLog";
+import MyRequests from "./MyRequests";
+import UsersDialog from "./UsersDialog";
 import logo from "../assets/logo.webp";
 
 const FILTERS = [
@@ -26,6 +29,9 @@ export default function Dashboard({ api, user, onLogout }) {
   const [fields, setFields] = useState(["project_title", "payee"]);
   const [dialog, setDialog] = useState(null); // { mode: "create" | "edit", entry? }
   const [pwOpen, setPwOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [myRequestsOpen, setMyRequestsOpen] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(false);
   const [toast, setToast] = useState("");
   const reqId = useRef(0);
 
@@ -104,6 +110,12 @@ export default function Dashboard({ api, user, onLogout }) {
     if (dialog.mode === "create") {
       await api.createDisbursement(payload);
       setToast("Entry added.");
+    } else if (!user.is_superuser) {
+      // Normal users' edits wait for an admin's approval
+      await api.requestEdit(dialog.entry.id, payload);
+      setToast("Edit request sent to an admin.");
+      setDialog(null);
+      return;
     } else {
       await api.updateDisbursement(dialog.entry.id, payload);
       setToast("Entry updated.");
@@ -116,7 +128,26 @@ export default function Dashboard({ api, user, onLogout }) {
     try {
       await api.deleteDisbursement(entry.id);
       await refresh();
-      setToast("Entry deleted.");
+      setToast("Entry archived.");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleArchiveProject(project) {
+    try {
+      await api.archiveProject(project.id);
+      await loadEntries();
+      setToast("Project archived.");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleRequestDelete(entry, reason) {
+    try {
+      await api.requestDeletion(entry.id, reason);
+      setToast("Archive request sent to an admin.");
     } catch (e) {
       setError(e.message);
     }
@@ -162,10 +193,20 @@ export default function Dashboard({ api, user, onLogout }) {
         </div>
 
         <div className="topright">
+          {user.is_superuser ? (
+            <button className="pill sm" onClick={() => setReviewOpen(true)}>
+              Activity Log
+            </button>
+          ) : (
+            <button className="pill sm" onClick={() => setMyRequestsOpen(true)}>
+              My requests
+            </button>
+          )}
           <AdminMenu
             user={user}
             initial={initial}
             onPassword={() => setPwOpen(true)}
+            onUsers={() => setUsersOpen(true)}
             onLogout={onLogout}
           />
         </div>
@@ -188,8 +229,10 @@ export default function Dashboard({ api, user, onLogout }) {
             loading={loading}
             q={q}
             fields={fields}
+            isAdmin={user.is_superuser}
             onNew={() => setCreatingProject(true)}
             onView={(e) => setView(e.project_title)}
+            onArchiveProject={handleArchiveProject}
           />
         ) : summary ? (
           <SummaryOfExpenses
@@ -201,7 +244,9 @@ export default function Dashboard({ api, user, onLogout }) {
             onEdit={(entry) =>
               setDialog({ mode: "edit", entry: { ...entry, project_title: summary.project_title } })
             }
+            isAdmin={user.is_superuser}
             onDelete={handleDelete}
+            onRequestDelete={handleRequestDelete}
           />
         ) : (
           <>
@@ -240,6 +285,18 @@ export default function Dashboard({ api, user, onLogout }) {
             setToast("Password changed.");
           }}
           onClose={() => setPwOpen(false)}
+        />
+      )}
+      {myRequestsOpen && <MyRequests api={api} onClose={() => setMyRequestsOpen(false)} />}
+      {usersOpen && (
+        <UsersDialog api={api} user={user} onClose={() => setUsersOpen(false)} onChanged={setToast} />
+      )}
+      {reviewOpen && (
+        <ActivityLog
+          api={api}
+          user={user}
+          onClose={() => setReviewOpen(false)}
+          onChanged={(msg) => { setToast(msg); refresh(); }}
         />
       )}
       {toast && (

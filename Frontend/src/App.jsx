@@ -3,6 +3,7 @@ import "./App.css";
 import { createApi, DEMO } from "./api/api";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
+import ForcePasswordChange from "./components/ForcePasswordChange";
 
 export default function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem("token") || (DEMO ? "demo" : null));
@@ -43,7 +44,23 @@ export default function App() {
     }
   }
 
-  if (!token) return <Login onLogin={handleLogin} onRegister={handleRegister} />;
+  if (!token)
+    return (
+      <Login
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        onResetRequest={(username, message) => createApi(null, null).requestPasswordReset(username, message)}
+      />
+    );
   if (!user) return <p className="boot">Loading your workspace…</p>;
+  if (user.must_change_password)
+    return (
+      <ForcePasswordChange
+        api={api}
+        user={user}
+        onDone={(newPassword) => handleLogin(user.username, newPassword)}
+        onLogout={logout}
+      />
+    );
   return <Dashboard api={api} user={user} onLogout={logout} />;
 }

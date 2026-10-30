@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import avatar from "../assets/default_user.jpg";
 
-export default function AdminMenu({ user, initial, onPassword, onLogout }) {
+export default function AdminMenu({ user, initial, onPassword, onUsers, onLogout }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -48,6 +48,17 @@ export default function AdminMenu({ user, initial, onPassword, onLogout }) {
           >
             Change password
           </button>
+          {user.is_superuser && onUsers && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onUsers();
+              }}
+            >
+              Manage users
+            </button>
+          )}
           <button role="menuitem" onClick={onLogout}>
             Sign out
           </button>

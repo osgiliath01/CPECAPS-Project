@@ -59,7 +59,7 @@ async function http(path, { method = "GET", body, form, token } = {}) {
 function decodeToken(t) {
   try {
     const b64 = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(b64));
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))));
   } catch {
     return null;
   }
@@ -79,11 +79,19 @@ export function createApi(token, onUnauthorized) {
     login: (username, password) =>
       http(ROUTES.login, { method: "POST", form: { username, password } }),
     register: (body) => http(ROUTES.register, { method: "POST", body }),
+    // Forgot password (no sign-in needed); an admin approves it
+    requestPasswordReset: (username, message) =>
+      http("/auth/reset-request", { method: "POST", body: { username, message: message || null } }),
     me: async () => {
       const payload = decodeToken(token);
       const expired = payload?.exp && payload.exp * 1000 < Date.now();
       if (!payload?.sub || expired) throw new ApiError("Your session has expired.", 401);
-      return { username: payload.sub, name: payload.sub, is_superuser: false };
+      return {
+        username: payload.sub,
+        name: payload.name || payload.sub,
+        is_superuser: !!payload.is_superuser,
+        must_change_password: !!payload.must_change_password,
+      };
     },
     
     listProjects: () => call(ROUTES.projects),
@@ -117,10 +125,50 @@ export function createApi(token, onUnauthorized) {
     updateDisbursement: (id, body) =>
       call(ROUTES.disbursement(id), { method: UPDATE_METHOD, body }),
 
+    // The backend archives the entry; nothing is ever erased.
     deleteDisbursement: (id) => call(ROUTES.disbursement(id), { method: "DELETE" }),
 
     createProject: (title) => call(ROUTES.projects, { method: "POST", body: { title } }),
+    // Archives the project with all its entries (restorable for 30 days)
+    archiveProject: (id) => call(`${ROUTES.projects}/${id}`, { method: "DELETE" }),
+    listArchivedProjects: () => call(`${ROUTES.projects}/archived`),
+    restoreProject: (id) => call(`${ROUTES.projects}/${id}/restore`, { method: "POST" }),
 
     changePassword: (body) => call(ROUTES.password, { method: "POST", body }),
+
+    // Requests: normal users ask, admins approve or reject (with an optional note)
+    requestDeletion: (id, reason) =>
+      call(`/disbursements/${id}/deletion-request`, { method: "POST", body: { reason } }),
+    requestEdit: (id, body) =>
+      call(`/disbursements/${id}/edit-request`, { method: "POST", body }),
+    listMyRequests: () => call("/my-requests"),
+    listRequests: (status = "pending") => call(`/deletion-requests?status=${status}`),
+    approveRequest: (id, note) =>
+      call(`/deletion-requests/${id}/approve`, { method: "POST", body: note ? { note } : undefined }),
+    rejectRequest: (id, note) =>
+      call(`/deletion-requests/${id}/reject`, { method: "POST", body: note ? { note } : undefined }),
+
+    // Password resets (admins only). approveReset returns the one-time temporary password.
+    listResetRequests: (status = "pending") => call(`/password-resets?status=${status}`),
+    approveReset: (id, note) =>
+      call(`/password-resets/${id}/approve`, { method: "POST", body: note ? { note } : undefined }),
+    rejectReset: (id, note) =>
+      call(`/password-resets/${id}/reject`, { method: "POST", body: note ? { note } : undefined }),
+
+    // User management (admins only). resetUserPassword returns the one-time temporary password.
+    listUsers: () => call("/users"),
+    updateUser: (id, body) => call(`/users/${id}`, { method: "PATCH", body }),
+    resetUserPassword: (id) => call(`/users/${id}/reset-password`, { method: "POST" }),
+    deleteUser: (id) => call(`/users/${id}`, { method: "DELETE" }),
+
+    // Activity Log (admins only)
+    listActivity: (params = {}) => {
+      const query = new URLSearchParams(
+        Object.entries(params).filter(([, v]) => v !== "" && v != null)
+      );
+      return call(`/activity-logs?${query}`);
+    },
+    listArchived: () => call("/disbursements/archived"),
+    restoreDisbursement: (id) => call(`/disbursements/${id}/restore`, { method: "POST" }),
   };
 }

@@ -17,6 +17,9 @@ export default function EntryDialog({ mode, entry, defaultProject, user, onSave,
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState("");
+  // Normal users can't edit directly: their changes go to an admin for approval
+  const asRequest = mode === "edit" && !user.is_superuser;
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function submit(e) {
@@ -51,7 +54,8 @@ export default function EntryDialog({ mode, entry, defaultProject, user, onSave,
           ref.current.close();
           return;
         }
-        await onSave({ ...changes, editor_name: user.name });
+        const why = reason.trim();
+        await onSave({ ...changes, editor_name: user.name, ...(asRequest && why ? { reason: why } : {}) });
       }
     } catch (err) {
       setError(err.message);
@@ -63,7 +67,7 @@ export default function EntryDialog({ mode, entry, defaultProject, user, onSave,
     <dialog className="dialog" aria-labelledby="entry-title" {...dialogProps}>
       <form onSubmit={submit}>
         <h2 id="entry-title">
-          {mode === "edit" ? "Edit record" : "Add record"}
+          {asRequest ? "Request changes" : mode === "edit" ? "Edit record" : "Add record"}
         </h2>
         <div className="row">
           <label>
@@ -92,10 +96,25 @@ export default function EntryDialog({ mode, entry, defaultProject, user, onSave,
           />
         </label>
 
+        {asRequest && (
+          <label>
+            Reason (optional)
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              maxLength={500}
+              placeholder="e.g. Wrong amount encoded"
+            />
+          </label>
+        )}
+
         <p className="hint">
           {mode === "create"
             ? `Encoded by ${user.name}.`
-            : `Added by ${entry.created_by} on ${fmtStamp(entry.created_at)}. Your name will be recorded as the editor.`}
+            : asRequest
+              ? `Added by ${entry.created_by} on ${fmtStamp(entry.created_at)}. An admin will review your changes before they're applied.`
+              : `Added by ${entry.created_by} on ${fmtStamp(entry.created_at)}. Your name will be recorded as the editor.`}
         </p>
 
         {error && (
@@ -108,7 +127,9 @@ export default function EntryDialog({ mode, entry, defaultProject, user, onSave,
             Cancel
           </button>
           <button className="pill primary" disabled={busy}>
-            {busy ? "Saving…" : mode === "create" ? "Add record" : "Save changes"}
+            {busy
+              ? asRequest ? "Sending…" : "Saving…"
+              : mode === "create" ? "Add record" : asRequest ? "Send request" : "Save changes"}
           </button>
         </div>
       </form>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { cents, money } from "../utils/format";
+import ConfirmDialog from "./ConfirmDialog";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "./Pagination";
 
@@ -15,6 +16,8 @@ function groupByProject(entries, projects = []) {
   // every project from the backend, so empty ones still show up
   for (const p of projects) {
     map.set(p.title.trim().toLowerCase(), {
+      id: p.id,
+      entry_count: p.entry_count ?? 0,
       project_title: p.title,
       total: 0,
       payees: [],
@@ -36,8 +39,9 @@ function groupByProject(entries, projects = []) {
   return [...map.values()];
 }
 
-export default function VoucherControl({ entries, projects, loading, q, fields, onNew, onView }) {
+export default function VoucherControl({ entries, projects, loading, q, fields, isAdmin, onNew, onView, onArchiveProject }) {
   const [sort, setSort] = useState({ key: "project_title", dir: "asc" });
+  const [toDelete, setToDelete] = useState(null);
 
   const grouped = useMemo(() => groupByProject(entries, projects), [entries, projects]);
 
@@ -125,6 +129,11 @@ export default function VoucherControl({ entries, projects, loading, q, fields, 
                   <button className="pill sm view" onClick={() => onView(p)}>
                     View
                   </button>
+                  {isAdmin && p.id != null && (
+                    <button className="pill sm danger" onClick={() => setToDelete(p)}>
+                      Archive
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -146,6 +155,28 @@ export default function VoucherControl({ entries, projects, loading, q, fields, 
           <p className="panel-msg">No projects match “{q}”.</p>
         )}
       </section>
+      {toDelete && (
+        <ConfirmDialog
+          title="Archive project?"
+          confirmLabel="Archive"
+          onCancel={() => setToDelete(null)}
+          onConfirm={() => {
+            onArchiveProject(toDelete);
+            setToDelete(null);
+          }}
+        >
+          <p>
+            Archive <strong>{toDelete.project_title}</strong>
+            {toDelete.payees.length > 0 &&
+              ` and its ${toDelete.payees.length} entr${toDelete.payees.length === 1 ? "y" : "ies"} (${money(toDelete.total / 100)})`}
+            ? It will be hidden from Voucher Control and totals.
+          </p>
+          <p>
+            An admin can restore it from Activity Log → Archived within <strong>30 days</strong>. After that it's
+            deleted permanently.
+          </p>
+        </ConfirmDialog>
+      )}
     </>
   );
 }

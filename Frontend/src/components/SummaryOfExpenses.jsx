@@ -4,9 +4,10 @@ import ConfirmDialog from "./ConfirmDialog";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "./Pagination";
 
-export default function SummaryOfExpenses({ summary, q, onBack, onNew, onEdit, onDelete }) {
+export default function SummaryOfExpenses({ summary, q, isAdmin, onBack, onNew, onEdit, onDelete, onRequestDelete }) {
   const [sort, setSort] = useState({ key: "date", dir: "desc" });
   const [toDelete, setToDelete] = useState(null);
+  const [reason, setReason] = useState("");
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -116,10 +117,10 @@ export default function SummaryOfExpenses({ summary, q, onBack, onNew, onEdit, o
                 </td>
                 <td className="actions">
                   <button className="pill sm view" onClick={() => onEdit(e)}>
-                    Edit
+                    {isAdmin ? "Edit" : "Request edit"}
                   </button>
-                  <button className="pill sm danger" onClick={() => setToDelete(e)}>
-                    Delete
+                  <button className="pill sm danger" onClick={() => { setReason(""); setToDelete(e); }}>
+                    {isAdmin ? "Archive" : "Request archive"}
                   </button>
                 </td>
               </tr>
@@ -148,8 +149,10 @@ export default function SummaryOfExpenses({ summary, q, onBack, onNew, onEdit, o
           <p className="panel-msg">No entries match “{q}”.</p>
         )}
       </section>
-      {toDelete && (
+      {toDelete && (isAdmin ? (
         <ConfirmDialog
+          title="Archive entry?"
+          confirmLabel="Archive"
           onCancel={() => setToDelete(null)}
           onConfirm={() => {
             onDelete(toDelete);
@@ -157,11 +160,38 @@ export default function SummaryOfExpenses({ summary, q, onBack, onNew, onEdit, o
           }}
         >
           <p>
-            Are you sure you want to delete CV# <strong>{toDelete.cv_no}</strong> ({toDelete.payee})?
-            This can't be undone.
+            Archive CV# <strong>{toDelete.cv_no}</strong> ({toDelete.payee})? It will be removed from
+            this project and its totals. An admin can restore it from Activity Log → Archived within 30 days;
+            after that it's deleted permanently.
           </p>
         </ConfirmDialog>
-      )}
+      ) : (
+        <ConfirmDialog
+          title="Request archive?"
+          confirmLabel="Send request"
+          onCancel={() => setToDelete(null)}
+          onConfirm={() => {
+            if (reason.trim().length < 3) return;
+            onRequestDelete(toDelete, reason.trim());
+            setToDelete(null);
+          }}
+        >
+          <p>
+            An admin will review your request to archive CV# <strong>{toDelete.cv_no}</strong> ({toDelete.payee}).
+          </p>
+          <label>
+            Reason
+            <textarea
+              value={reason}
+              onChange={(ev) => setReason(ev.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="e.g. Duplicate entry"
+              autoFocus
+            />
+          </label>
+        </ConfirmDialog>
+      ))}
     </>
   );
 }
