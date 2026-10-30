@@ -20,6 +20,7 @@ class ProjectResponse(BaseModel):
     id: int
     title: str
     total_amount: Decimal
+    entry_count: int = 0  # includes archived entries
 
     model_config = ConfigDict(from_attributes=True)
 

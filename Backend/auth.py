@@ -1,7 +1,10 @@
+import asyncio
+from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -11,11 +14,49 @@ import database
 import models
 import schemas
 import security
+import deletion_requests
+import activity
+import password_resets
+import users_admin
 
-# Create database tables automatically
+# Create database tables automatically, then add any new columns to existing tables
 models.Base.metadata.create_all(bind=database.engine)
+database.ensure_schema()
 
-app = FastAPI(title="Calamba Allied Industrial Corporation")
+# Deletes anything archived more than 30 days ago. Runs at startup, then every hour.
+PURGE_EVERY_SECONDS = 60 * 60
+
+
+def purge_once() -> None:
+    db = database.SessionLocal()
+    try:
+        removed = activity.purge_expired(db)
+        if removed:
+            print(f"[purge] permanently deleted {removed} archived record(s)")
+    except Exception as e:  # another server may have purged the same rows first
+        db.rollback()
+        print(f"[purge] skipped: {e}")
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def loop():
+        while True:
+            await run_in_threadpool(purge_once)
+            await asyncio.sleep(PURGE_EVERY_SECONDS)
+
+    task = asyncio.create_task(loop())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="Calamba Allied Industrial Corporation", lifespan=lifespan)
+app.include_router(deletion_requests.router)
+app.include_router(activity.router)
+app.include_router(password_resets.router)
+app.include_router(users_admin.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins during development
@@ -45,7 +86,11 @@ def register_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username is already taken",
         )
-    return crud.create_user(db=db, user_in=payload)
+    user = crud.create_user(db=db, user_in=payload)
+    activity.log(db, user.username, "register", f"Registered account '{user.username}' ({user.name})",
+                 "user", user.id)
+    db.commit()
+    return user
 
 
 @app.post(
@@ -62,6 +107,9 @@ def login_for_access_token(
         db, username=form_data.username, password=form_data.password
     )
     if not user:
+        activity.log(db, form_data.username[:255] or "?", "login_failed",
+                     f"Failed sign-in attempt for '{form_data.username[:100]}'", "user")
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -69,15 +117,25 @@ def login_for_access_token(
         )
 
     if not user.is_active:
+        activity.log(db, user.username, "login_failed",
+                     f"Sign-in blocked: '{user.username}' is inactive", "user", user.id)
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user account",
         )
 
     access_token = security.create_access_token(
-        data={"sub": user.username},
+        data={
+            "sub": user.username,
+            "name": user.name,
+            "is_superuser": user.is_superuser,
+            "must_change_password": user.must_change_password,
+        },
         expires_delta=timedelta(minutes=30),
     )
+    activity.log(db, user.username, "login", f"'{user.username}' signed in", "user", user.id)
+    db.commit()
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -88,10 +146,11 @@ def login_for_access_token(
 )
 def update_password(
     payload: schemas.PasswordChangeSchema,
-    current_user: models.User = Depends(security.get_current_user),
+    current_user: models.User = Depends(security.get_current_user_allow_temporary),
     db: Session = Depends(database.get_db),
 ):
-    """Changes password for the currently authenticated user."""
+    """Changes password for the currently authenticated user. Also how someone signed in
+    with a temporary password (after a reset) sets their new one."""
     if not security.verify_password(
         payload.old_password, current_user.hashed_password
     ):
@@ -100,9 +159,17 @@ def update_password(
             detail="Incorrect existing password",
         )
 
-    return crud.change_password(
+    was_temporary = current_user.must_change_password
+    user = crud.change_password(
         db, username=current_user.username, new_password=payload.new_password
     )
+    user.must_change_password = False
+    activity.log(db, current_user.username, "password_change",
+                 f"'{current_user.username}' " + ("replaced their temporary password" if was_temporary
+                                                  else "changed their password"),
+                 "user", current_user.id)
+    db.commit()
+    return user
 
 
 # ==========================================
@@ -136,12 +203,41 @@ def create_project(
 ):
     """Allows creating a new project directly without needing an initial disbursement record."""
     existing_project = crud.get_project_by_title(db, title=payload.title)
+    if existing_project and existing_project.is_archived:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A project with this title is archived. An admin can restore it from Activity Log \u2192 Archived.")
     if existing_project:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Project with this title already exists",
         )
-    return crud.create_project(db, project_in=payload)
+    project = crud.create_project(db, project_in=payload)
+    activity.log(db, current_user.username, "project_create", f"Created project '{project.title}'",
+                 "project", project.id)
+    db.commit()
+    return project
+
+
+@app.delete(
+    "/projects/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Projects"],
+)
+def archive_project(
+    project_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_superuser),
+):
+    """Admins only: archives a project together with all its entries. It can be restored
+    from the Activity Log for 30 days, then it is deleted permanently."""
+    project = db.get(models.Project, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.is_archived:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This project is already archived.")
+
+    activity.archive_project(db, project, current_user)
+    db.commit()
+    return None
 
 
 # ==========================================
@@ -161,7 +257,19 @@ def record_disbursement(
     current_user: models.User = Depends(security.get_current_user),
 ):
     """Appends a new disbursement record to the given project title."""
-    return crud.create_disbursement(db, payload, current_user)
+    existing_project = crud.get_project_by_title(db, title=payload.project_title)
+    if existing_project and existing_project.is_archived:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A project with this title is archived. An admin can restore it from Activity Log \u2192 Archived.")
+    project_existed = existing_project is not None
+    d = crud.create_disbursement(db, payload, current_user)
+    if not project_existed:
+        activity.log(db, current_user.username, "project_create",
+                     f"Created project '{d.project.title}' (with its first entry)", "project", d.project_id)
+    activity.log(db, current_user.username, "create", f"Added {activity.describe(d)}",
+                 "disbursement", d.id, {"entry": activity.snapshot(d)})
+    db.commit()
+    db.refresh(d)
+    return d
 
 
 @app.patch(
@@ -173,17 +281,32 @@ def update_disbursement_log(
     disbursement_id: int,
     payload: schemas.DisbursementUpdate,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(security.get_current_user),
+    current_user: models.User = Depends(security.get_current_superuser),
 ):
-    """Updates specific fields of an existing disbursement record."""
-    updated_item = crud.update_disbursement(
-        db, disbursement_id, payload, current_user
-    )
-    if not updated_item:
+    """Admins only: edits an entry directly. Other users send an edit request instead
+    (POST /disbursements/{id}/edit-request), which an admin approves or rejects."""
+    existing = db.get(models.Disbursement, disbursement_id)
+    if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Disbursement log not found",
         )
+    if existing.is_archived:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This entry is archived. An admin has to restore it before it can be edited.",
+        )
+
+    before = activity.snapshot(existing)
+    updated_item = crud.update_disbursement(
+        db, disbursement_id, payload, current_user
+    )
+    changes = activity.diff(before, activity.snapshot(updated_item))
+    if changes:
+        activity.log(db, current_user.username, "update", f"Edited {activity.describe(updated_item)}",
+                     "disbursement", updated_item.id, {"changes": changes})
+        db.commit()
+        db.refresh(updated_item)
     return updated_item
 
 
@@ -194,16 +317,28 @@ def update_disbursement_log(
 )
 def delete_disbursement_log(
     disbursement_id: int,
+    reason: Optional[str] = None,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(security.get_current_user),
+    current_user: models.User = Depends(security.get_current_superuser),
 ):
-    """Deletes a specific disbursement log entry by its ID."""
-    success = crud.delete_disbursement(db, disbursement_id)
-    if not success:
+    """Archives an entry (admins only). It disappears from projects and totals but is
+    never erased, and can be restored from the Activity Log."""
+    d = db.get(models.Disbursement, disbursement_id)
+    if not d:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Disbursement log not found",
         )
+    if d.is_archived:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This entry is already archived.",
+        )
+
+    activity.archive_disbursement(d, current_user)
+    activity.log(db, current_user.username, "archive", f"Archived {activity.describe(d)}",
+                 "disbursement", d.id, {"entry": activity.snapshot(d), "reason": reason})
+    db.commit()
     return None
 
 

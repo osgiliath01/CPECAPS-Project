@@ -52,7 +52,7 @@ def create_access_token(
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(
+def get_current_user_allow_temporary(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(database.get_db),
 ) -> models.User:
@@ -75,7 +75,34 @@ def get_current_user(
     if user is None:
         raise credentials_exception
     if not user.is_active:
+        # 401 so the app signs a deactivated user out straight away
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This account has been deactivated.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+def get_current_user(
+    user: models.User = Depends(get_current_user_allow_temporary),
+) -> models.User:
+    """The signed-in user. Someone still on a temporary password (after an admin-approved
+    reset) can only change their password until they set a new one."""
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Set a new password first. You're still using a temporary one.",
+        )
+    return user
+
+
+def get_current_superuser(
+    current_user: models.User = Depends(get_current_user),
+) -> models.User:
+    """Lets the request through only if the logged-in user is a superuser."""
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can do this.",
+        )
+    return current_user

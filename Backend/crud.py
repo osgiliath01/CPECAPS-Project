@@ -57,8 +57,8 @@ def change_password(db: Session, username: str, new_password: str) -> models.Use
 
 
 def get_all_projects(db: Session) -> List[models.Project]:
-    """Fetches all existing project records directly from the projects table."""
-    return db.query(models.Project).all()
+    """Fetches all projects that are not archived."""
+    return db.query(models.Project).filter(models.Project.is_archived.is_(False)).all()
 
 
 def get_project_by_title(db: Session, title: str) -> Optional[models.Project]:
@@ -76,14 +76,14 @@ def create_project(db: Session, project_in: schemas.ProjectCreate) -> models.Pro
 
 
 def get_project_summary(db: Session, project_title: str) -> Optional[dict]:
-    """Retrieves project details including all linked disbursement entries."""
+    """Retrieves project details with its active (not archived) entries."""
     project = get_project_by_title(db, title=project_title)
-    if not project:
+    if not project or project.is_archived:
         return None
 
     return {
         "project_title": project.title,
-        "entries": project.disbursements,
+        "entries": project.active_disbursements,
         "total_amount": project.total_amount,
     }
 
@@ -151,16 +151,5 @@ def update_disbursement(
     return db_disbursement
 
 
-def delete_disbursement(db: Session, disbursement_id: int) -> bool:
-    """Deletes a disbursement entry by its ID."""
-    db_disbursement = (
-        db.query(models.Disbursement)
-        .filter(models.Disbursement.id == disbursement_id)
-        .first()
-    )
-    if not db_disbursement:
-        return False
-
-    db.delete(db_disbursement)
-    db.commit()
-    return True
+# Entries are never hard-deleted. See activity.archive_disbursement() and the
+# DELETE /disbursements/{id} route, which archives instead.

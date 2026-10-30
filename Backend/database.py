@@ -46,13 +46,41 @@ SessionLocal = sessionmaker(autoflush=False, autocommit=False, bind=engine)
 Base = declarative_base()
 
 
+def ensure_schema():
+    """Adds columns that create_all() can't add to tables that already exist.
+
+    Safe to run every startup: each statement does nothing if the column is already there.
+    Older copies of the backend keep working, since they simply ignore the new columns.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    statements = [
+        "ALTER TABLE disbursements ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE disbursements ADD COLUMN IF NOT EXISTS archived_by VARCHAR",
+        "ALTER TABLE disbursements ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP WITH TIME ZONE",
+        "CREATE INDEX IF NOT EXISTS ix_disbursements_is_archived ON disbursements (is_archived)",
+        "ALTER TABLE deletion_requests ADD COLUMN IF NOT EXISTS request_type VARCHAR(20) NOT NULL DEFAULT 'archive'",
+        "ALTER TABLE deletion_requests ADD COLUMN IF NOT EXISTS changes JSON",
+        "CREATE INDEX IF NOT EXISTS ix_deletion_requests_request_type ON deletion_requests (request_type)",
+        "ALTER TABLE disbursements ADD COLUMN IF NOT EXISTS archived_with_project BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_by VARCHAR",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP WITH TIME ZONE",
+        "CREATE INDEX IF NOT EXISTS ix_projects_is_archived ON projects (is_archived)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE",
+    ]
+    with engine.begin() as conn:
+        for sql in statements:
+            conn.execute(text(sql))
+
+
 def init_db():
     """Call this during startup to auto-create all tables and seed default superadmin."""
     Base.metadata.create_all(bind=engine)
+    ensure_schema()
 
-    # Local imports prevent circular dependency errors with models.py
     import models
-    from security import get_password_hash  # Adjust module path if get_password_hash lives elsewhere (e.g., core.security)
+    from security import get_password_hash 
 
     db = SessionLocal()
     try:
@@ -60,16 +88,32 @@ def init_db():
         superadmin = db.query(models.User).filter(models.User.is_superuser == True).first()
         
         if not superadmin:
-            admin_user = models.User(
-                username="admin",
-                name="System Superadmin",
-                hashed_password=get_password_hash("admin123"),  # Change initial password as needed
-                is_active=True,
-                is_superuser=True,
-            )
-            db.add(admin_user)
-            db.commit()
-            print("--> Default Superadmin account seeded: admin / admin123")
+            existing = db.query(models.User).filter(models.User.username == "admin").first()
+            if existing:
+                existing.is_superuser = True
+                existing.is_active = True
+                db.add(models.ActivityLog(
+                    actor="system", action="promote_admin", entity_type="user",
+                    entity_id=existing.id, summary="Promoted existing 'admin' account to superadmin",
+                ))
+                db.commit()
+                print("--> Existing 'admin' account promoted to superadmin")
+            else:
+                admin_user = models.User(
+                    username="admin",
+                    name="System Superadmin",
+                    hashed_password=get_password_hash("admin123"),
+                    is_active=True,
+                    is_superuser=True,
+                )
+                db.add(admin_user)
+                db.flush()
+                db.add(models.ActivityLog(
+                    actor="system", action="promote_admin", entity_type="user",
+                    entity_id=admin_user.id, summary="Created default superadmin 'admin'",
+                ))
+                db.commit()
+                print("--> Default Superadmin account seeded: admin / admin123")
     except Exception as e:
         db.rollback()
         print(f"Error seeding default superadmin: {e}")
