@@ -39,7 +39,7 @@ function groupByProject(entries, projects = []) {
   return [...map.values()];
 }
 
-export default function VoucherControl({ entries, projects, loading, q, fields, isAdmin, onNew, onView, onArchiveProject }) {
+export default function VoucherControl({ entries, projects, loading, q, fields, isAdmin, onNew, onView, onArchiveProject, onImport }) {
   const [sort, setSort] = useState({ key: "project_title", dir: "asc" });
   const [toDelete, setToDelete] = useState(null);
 
@@ -81,7 +81,12 @@ export default function VoucherControl({ entries, projects, loading, q, fields, 
       <div className="page-head">
         <h1>Voucher Control</h1>
         <div className="head-actions">
-          <button className="pill" disabled title="Import is not available yet">
+          <button
+            className="pill"
+            disabled={!isAdmin}
+            title={isAdmin ? "Import entries from a CSV file" : "Only admins can import files"}
+            onClick={onImport}
+          >
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
               <path
                 d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"

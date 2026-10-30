@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { fmtStamp } from "../utils/format";
 
 // "Password resets" tab of the Activity Log window (admins only)
-export default function PasswordResets({ api, user, onChanged }) {
+export default function PasswordResets({ api, user, version, onChanged }) {
   const [items, setItems] = useState(null);
   const [notes, setNotes] = useState({});
   const [error, setError] = useState("");
@@ -12,7 +12,7 @@ export default function PasswordResets({ api, user, onChanged }) {
 
   useEffect(() => {
     api.listResetRequests().then(setItems, (e) => setError(e.message));
-  }, [api]);
+  }, [api, version]);
 
   async function act(req, approve) {
     setBusyId(req.id);

@@ -1,6 +1,6 @@
-# CPECAPS Project — Changes (October 30, 2026)
+# CPECAPS Project — Changes (October 30–31, 2026)
 
-This document describes every change made to the Calamba Allied Industrial Corporation voucher system on October 30, 2026: what was added, how each feature behaves, the database and API changes, and how to test them.
+This document describes every change made to the Calamba Allied Industrial Corporation voucher system on October 30–31, 2026: what was added, how each feature behaves, the database and API changes, and how to test them.
 
 **Contents**
 
@@ -18,6 +18,9 @@ This document describes every change made to the Calamba Allied Industrial Corpo
    - 4.8 Password reset from the login page
    - 4.9 User management
    - 4.10 Interface fixes
+   - 4.11 CSV import
+   - 4.12 Live updates
+   - 4.13 Edit-conflict protection
 5. [Database changes](#5-database-changes)
 6. [API reference](#6-api-reference)
 7. [Activity Log action reference](#7-activity-log-action-reference)
@@ -40,27 +43,58 @@ This document describes every change made to the Calamba Allied Industrial Corpo
 | Forgotten password | No way to recover | **Forgot password?** on the login page; an admin approves and hands over a temporary password |
 | Accounts | Managed only through the database | **Manage users** screen: rename, change role, deactivate, reset password, delete |
 | Admin role | Existed in the database but the app ignored it | Enforced by the backend on every protected route and shown in the interface |
+| Import File | Disabled | Admins import entries from CSV, with a preview and per-row validation |
+| Other people's changes | Only visible after reloading the page | Appear automatically within ~2 seconds |
+| Two people editing at once | Last save silently won | Outdated edits and approvals are refused with a clear message |
+| Backend | Each teammate ran their own copy | **One shared backend** next to the database (Docker) |
 
 ---
 
 ## 2. Running the project
 
-```powershell
-# Backend (from Project\Backend, with the virtual environment active)
-..\venv\Scripts\activate
-python main.py              # first time only: creates tables and the default admin
-uvicorn auth:app --reload   # the FastAPI app lives in auth.py, not main.py
+There is now **one shared backend** for the whole team, running in Docker on the same machine as the database (`database.nyala-ordinal.ts.net`). Everyone's app talks to it, so everyone sees the same data, live updates work, and the 30-day purge runs in exactly one place.
 
-# Frontend (from Project\Frontend)
+### On the database machine (once, and after each update)
+
+From the `Backend` folder, with Docker running:
+
+```bash
+git pull
+docker compose up -d --build     # starts/updates the database (db) and the backend (api)
+docker compose logs -f api       # optional: watch the backend's output
+```
+
+- The backend listens on port **8000**: http://database.nyala-ordinal.ts.net:8000/docs
+- It connects to the database inside Docker (`db:5432`), and upgrades the database by itself on start (see [section 5](#5-database-changes)).
+- First time only, create the default admin: `docker compose exec api python main.py`
+
+### On each teammate's computer
+
+Only the frontend runs locally. Point it at the shared backend once:
+
+```powershell
+cd Frontend
+copy .env.example .env.local      # sets VITE_API_URL to the shared backend
+npm install
 npm run dev
 ```
 
-- API docs (Swagger): http://localhost:8000/docs
+You must be connected to **Tailscale** to reach the shared backend. Signing in works the same as before.
+
+### Running a backend locally (development only)
+
+Only when changing backend code. Use a test copy of the database if you can, and stop it when you're done:
+
+```powershell
+cd Backend
+..\venv\Scripts\activate
+uvicorn auth:app --reload --timeout-graceful-shutdown 3
+```
+
+and temporarily point your frontend at it with `VITE_API_URL=http://localhost:8000` in `.env.local`. The `--timeout-graceful-shutdown 3` keeps reloads fast, since live-update connections stay open.
+
+- API docs (Swagger): `/docs` on whichever backend you use
 - App: the URL printed by `npm run dev` (usually http://localhost:5173)
-
-**On first start after this update**, the backend upgrades the shared database by itself (see [section 5](#5-database-changes)). No manual migration is needed. Teammates running older code keep working, but should pull these changes, because older code still hard-deletes entries.
-
----
 
 ## 3. Roles and permissions
 
@@ -218,6 +252,44 @@ Deactivating is usually better than deleting: if a deleted username is registere
 - **Badge classes** use an `act-` / `st-` prefix. The unprefixed `login` class was picking up the login page's full-screen style.
 - **Names with ñ** and other non-English characters now display correctly. The sign-in token is decoded as UTF-8 in `api.js → decodeToken`.
 
+### 4.11 CSV import
+
+**Import File** in Voucher Control (admins only; greyed out for normal users).
+
+1. Choose a CSV with the columns `project_title, date, cv_no, payee, amount` (header row required, any order). A **Download a template** link is in the window.
+2. The backend checks every row **without saving** and shows: rows found, rows ready, rows with problems, total amount, new projects (expandable), the date range, and a table of skipped rows with line numbers and reasons.
+3. **Import N rows** saves all valid rows in one transaction and creates any new projects. One **Imported file** entry is written to the Activity Log (file name, counts, total, new projects, skipped line numbers).
+
+| Check | Rule |
+|---|---|
+| Required | project title, date, CV#, payee and amount must not be empty |
+| Dates | `YYYY-MM-DD`, `MM/DD/YYYY` and `Oct 30, 2026` are accepted; day-first dates (`30/10/2026`) are rejected rather than guessed |
+| Amounts | `₱12,500.50`-style values are cleaned; zero, negative, text, more than 2 decimals, and over ₱99,999,999.99 are rejected |
+| CV numbers | A CV# already in the system, or repeated in the file, is rejected, so importing the same file twice adds nothing |
+| Projects | Titles match existing projects regardless of capitalisation; rows for an archived project are rejected |
+| File | UTF-8 or Excel's plain "CSV" encoding; at most 5 MB and 10,000 rows |
+
+Test files are in `sample_data/`: `disbursements_import_sample.csv` (100 projects, 829 valid rows, ₱159M) and `disbursements_import_errors.csv` (13 rows: 3 valid, 10 with one problem each).
+
+### 4.12 Live updates
+
+Changes made by anyone appear on everyone's screen within about two seconds, without reloading.
+
+- **How it works:** every change already writes a row to the Activity Log. The backend checks that table every 1.5 seconds and pushes a small notice ("an entry was updated by Janjan") to every open browser over one long-lived connection (Server-Sent Events, `GET /live`). The browser then reloads what it's showing. The notice never contains the data itself.
+- **What refreshes:** Voucher Control, the open project's entries, and any open window: Activity Log (all tabs), My requests, Manage users. Note fields you're typing in the Requests tab are kept.
+- **Toast:** "Updated by Janjan." when someone else changed entries or projects. Your own actions don't trigger it.
+- **Live indicator** in the top bar: a green **Live** dot when connected, yellow **Reconnecting…** otherwise. The app reconnects by itself and catches up on anything missed.
+- **Privacy:** normal users don't receive account-related notices (sign-ins, resets, user changes).
+- **Security:** the connection uses the normal sign-in token (sent in a header, not the URL). The backend re-checks every minute that the account is still active, and signs out a deactivated user.
+
+### 4.13 Edit-conflict protection
+
+Status changes were already protected (a request can't be approved twice, an entry can't be archived twice, and so on). Value edits now are too:
+
+- **Direct edits by admins** and **edit requests** send the values the person saw for the fields they're changing. If any of those changed since the dialog was opened, the save is refused with `409`: *"Janjan changed this entry's amount after you opened it. Close it and open it again to see the latest version."* Edits to *different* fields of the same entry don't block each other.
+- **Approving an edit request** is refused if the entry changed after the request was made, so an older request can't silently undo someone's newer edit. The message tells the admin to reject it and ask for a new request.
+- **Simultaneous clicks** (two admins approving at the same moment, two requests for one entry, editing while archiving) are serialised with database row locks (`SELECT … FOR UPDATE`), so only the first one goes through.
+
 ---
 
 ## 5. Database changes
@@ -324,9 +396,10 @@ All changes are applied automatically when the backend starts:
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | POST | `/disbursements/` | user | Add an entry |
-| PATCH | `/disbursements/{id}` | admin | Edit directly |
+| PATCH | `/disbursements/{id}` | admin | Edit directly. Optional `original` (values seen) enables the conflict check |
 | DELETE | `/disbursements/{id}?reason=` | admin | **Archive** |
 | GET | `/disbursements/archived` | admin | Entries archived on their own, with `deletes_at` |
+| POST | `/disbursements/import?mode=preview\|commit` | admin | CSV upload (field `file`). `preview` validates only; `commit` saves valid rows |
 | POST | `/disbursements/{id}/restore` | admin | Restore an entry |
 
 ### Requests
@@ -340,11 +413,12 @@ All changes are applied automatically when the backend starts:
 | POST | `/deletion-requests/{id}/approve` | admin | Apply. Body: `{note?}` |
 | POST | `/deletion-requests/{id}/reject` | admin | Body: `{note?}` |
 
-### Activity Log
+### Activity Log and live updates
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | GET | `/activity-logs` | admin | Query: `entity_type`, `action`, `actor`, `q`, `limit` (≤500), `offset`. Returns `{total, items}` |
+| GET | `/live` | user | Server-Sent Events stream of change notices (`hello`, messages, `resync`, `bye`) |
 
 ### Common error responses
 
@@ -353,7 +427,7 @@ All changes are applied automatically when the backend starts:
 | 401 | Not signed in, token expired, or account deactivated (the app signs out) |
 | 403 | Admin only; can't review own request; or still on a temporary password |
 | 404 | Record not found (or project archived, for summaries) |
-| 409 | The entry already has a pending request |
+| 409 | The entry already has a pending request, or it changed since you opened it / since the request was made |
 | 400 | Business rule, e.g. "already archived", "last active admin", "nothing was changed" |
 
 ---
@@ -370,6 +444,7 @@ All changes are applied automatically when the backend starts:
 | `archive_approved` / `archive_rejected` | Archive approved / rejected | An admin decides | disbursement |
 | `edit_requested` | Edit requested | A user asks to edit | disbursement |
 | `edit_approved` / `edit_rejected` | Edit approved / rejected | An admin decides | disbursement |
+| `import` | Imported file | An admin imports a CSV | disbursement |
 | `project_create` | Created project | A project is created (directly, or with its first entry) | project |
 | `project_archive` | Archived project | An admin archives a project | project |
 | `project_restore` | Restored project | An admin restores a project | project |
@@ -398,6 +473,10 @@ All changes are applied automatically when the backend starts:
 | `deletion_requests.py` | **new** | Archive and edit requests, My requests, approve/reject with notes |
 | `password_resets.py` | **new** | Forgot-password flow and temporary password generator |
 | `users_admin.py` | **new** | Manage users routes with self and last-admin protection |
+| `imports.py` | **new** | CSV import with preview and per-row validation |
+| `live.py` | **new** | Live updates: Activity Log watcher and `/live` stream |
+| `Dockerfile`, `.dockerignore`, `requirements.txt` | **new** | Image for the shared backend (Linux-friendly dependency list) |
+| `docker-compose.yml` | changed | New `api` service next to `db` |
 | `models.py` | changed | Archive columns; `archived_with_project`; `must_change_password`; new `ActivityLog`, `DeletionRequest`, `PasswordResetRequest`; totals skip archived entries |
 | `database.py` | changed | `ensure_schema()` adds new columns; `init_db()` promotes an existing `admin` and logs it |
 | `security.py` | changed | `get_current_superuser`; `get_current_user` blocks temporary passwords (`get_current_user_allow_temporary` allows them); deactivated accounts get `401` |
@@ -423,6 +502,9 @@ All changes are applied automatically when the backend starts:
 | `components/PasswordResets.jsx` | **new** | Admin reset approvals with one-time password display |
 | `components/UsersDialog.jsx` | **new** | Manage users window |
 | `components/AdminMenu.jsx` | changed | **Manage users** menu item for admins |
+| `components/ImportDialog.jsx` | **new** | Import window with preview |
+| `api/live.js` | **new** | Live-updates connection with automatic reconnect |
+| `Frontend/.env.example` | **new** | Points the app at the shared backend (copy to `.env.local`) |
 
 ---
 
@@ -432,6 +514,8 @@ All changes are applied automatically when the backend starts:
 |---|---|---|---|
 | `RETENTION_DAYS` | `Backend/activity.py` | 30 | Days before archived items are deleted permanently. Set to `0` temporarily to test the purge |
 | `PURGE_EVERY_SECONDS` | `Backend/auth.py` | 3600 | How often the purge runs |
+| `LIVE_CHECK_SECONDS` | `Backend/live.py` | 1.5 | How often the backend looks for new changes to push |
+| `VITE_API_URL` | `Frontend/.env.local` | shared backend | Which backend the app talks to |
 | Token lifetime | `Backend/auth.py` (`/token` route) | 30 minutes | Users are signed out after this |
 | Temporary password length | `Backend/password_resets.py` (`make_temporary_password`) | 10 | |
 | Activity page size | `Frontend/src/components/ActivityLog.jsx` (`PAGE`) | 50 | |
@@ -475,6 +559,17 @@ Restart `uvicorn auth:app --reload`, refresh the app, and sign in again so the n
 - [ ] Admin: Manage users → a user → Make admin, Deactivate (they can't sign in), Reactivate.
 - [ ] Trying to deactivate yourself, or the only admin, is refused.
 
+**Import**
+
+- [ ] Admin: Import File → sample file → 829 ready, 100 new projects → Import. Choosing it again rejects all rows as already existing.
+- [ ] The errors file shows 3 ready and 10 skipped, each with a reason.
+
+**Live updates and conflicts** (two browsers, two accounts)
+
+- [ ] Both show the green **Live** dot. Adding an entry in one appears in the other within ~2 seconds, with "Updated by …".
+- [ ] Both admins open Edit on the same entry and change the amount. The second save is refused with the "changed after you opened it" message.
+- [ ] A user requests an edit; an admin edits the same field directly; approving the request is refused.
+
 **Activity Log**
 
 - [ ] Every action above appears. **Record type** filters Entries, Projects and Accounts.
@@ -485,9 +580,9 @@ Restart `uvicorn auth:app --reload`, refresh the app, and sign in again so the n
 
 These were found during the work but are not fixed yet:
 
-1. **Demo mode is broken.** `src/api/mockAPI.js` contains a pasted copy of `createApi` that refers to names not defined in that file, so `VITE_DEMO=true` fails at startup. The sample data in it is fine; the function needs rewriting, including stand-ins for the new methods.
+1. **Demo mode is incomplete.** A teammate fixed `src/api/mockAPI.js` (commit `96f9182`), but it doesn't include the newer features (requests, Activity Log, users, import), so those screens won't work with `VITE_DEMO=true`. Live updates are switched off in demo mode.
 2. **Lint warnings that predate this update:** `Dashboard.jsx` (setState inside an effect, two places), `AdminMenu.jsx` (unused `initial` prop) and `App.jsx` (re-thrown error without `cause`). The app runs normally.
-3. **`requirements.txt` is saved as UTF-16** (from PowerShell's `>`), which some tools can't read. Regenerate it as UTF-8:
+3. **The root `requirements.txt` is saved as UTF-16** (from PowerShell's `>`), and includes Windows-only packages. The shared backend uses `Backend/requirements.txt` instead. To fix the root one, regenerate it as UTF-8:
    `pip freeze | Out-File -Encoding utf8 requirements.txt`
 4. **Secrets are hard-coded:** `SECRET_KEY` in `security.py` and the database password in `database.py`/`docker-compose.yml`. Move them to environment variables before deploying.
 5. **CORS allows every origin** (`allow_origins=["*"]`). Restrict it to the real frontend address before deploying.

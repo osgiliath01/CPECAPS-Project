@@ -51,7 +51,7 @@ export function RequestDetails({ request }) {
 }
 
 // "Requests" tab of the Activity Log window (admins only)
-export default function DeletionRequests({ api, user, onChanged }) {
+export default function DeletionRequests({ api, user, version, onChanged }) {
   const [items, setItems] = useState(null);
   const [notes, setNotes] = useState({});
   const [error, setError] = useState("");
@@ -67,7 +67,7 @@ export default function DeletionRequests({ api, user, onChanged }) {
   }
   useEffect(() => {
     api.listRequests("pending").then(setItems, (e) => setError(e.message));
-  }, [api]);
+  }, [api, version]);
 
   async function act(req, approve) {
     setBusyId(req.id);

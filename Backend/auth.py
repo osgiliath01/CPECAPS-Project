@@ -18,6 +18,8 @@ import deletion_requests
 import activity
 import password_resets
 import users_admin
+import imports
+import live
 
 # Create database tables automatically, then add any new columns to existing tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -48,7 +50,10 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(PURGE_EVERY_SECONDS)
 
     task = asyncio.create_task(loop())
+    watcher = asyncio.create_task(live.hub.run())  # live updates (see live.py)
     yield
+    live.hub.close()
+    watcher.cancel()
     task.cancel()
 
 
@@ -57,6 +62,8 @@ app.include_router(deletion_requests.router)
 app.include_router(activity.router)
 app.include_router(password_resets.router)
 app.include_router(users_admin.router)
+app.include_router(imports.router)
+app.include_router(live.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins during development
@@ -229,7 +236,7 @@ def archive_project(
 ):
     """Admins only: archives a project together with all its entries. It can be restored
     from the Activity Log for 30 days, then it is deleted permanently."""
-    project = db.get(models.Project, project_id)
+    project = db.get(models.Project, project_id, with_for_update=True)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if project.is_archived:
@@ -285,7 +292,7 @@ def update_disbursement_log(
 ):
     """Admins only: edits an entry directly. Other users send an edit request instead
     (POST /disbursements/{id}/edit-request), which an admin approves or rejects."""
-    existing = db.get(models.Disbursement, disbursement_id)
+    existing = db.get(models.Disbursement, disbursement_id, with_for_update=True)  # one edit at a time
     if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -296,6 +303,8 @@ def update_disbursement_log(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This entry is archived. An admin has to restore it before it can be edited.",
         )
+
+    activity.check_unchanged(existing, payload.original)
 
     before = activity.snapshot(existing)
     updated_item = crud.update_disbursement(
@@ -323,7 +332,7 @@ def delete_disbursement_log(
 ):
     """Archives an entry (admins only). It disappears from projects and totals but is
     never erased, and can be restored from the Activity Log."""
-    d = db.get(models.Disbursement, disbursement_id)
+    d = db.get(models.Disbursement, disbursement_id, with_for_update=True)
     if not d:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

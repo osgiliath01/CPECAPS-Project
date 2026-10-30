@@ -5,7 +5,7 @@ import { EntryCell, RequestDetails, TypeBadge } from "./DeletionRequests";
 const STATUS_LABEL = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
 
 // Normal users: their own archive and edit requests, and what the admin decided.
-export default function MyRequests({ api, onClose }) {
+export default function MyRequests({ api, version, onClose }) {
   const ref = useRef(null);
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
@@ -17,7 +17,7 @@ export default function MyRequests({ api, onClose }) {
 
   useEffect(() => {
     api.listMyRequests().then(setItems, (e) => setError(e.message));
-  }, [api]);
+  }, [api, version]);
 
   return (
     <dialog ref={ref} className="dialog dialog-wide" onCancel={(e) => { e.preventDefault(); onClose(); }}>

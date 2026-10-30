@@ -44,6 +44,43 @@ def snapshot(d: models.Disbursement) -> dict:
     return data
 
 
+FIELD_LABELS = {"date": "date", "cv_no": "CV no.", "payee": "payee", "amount": "amount"}
+
+
+def _normalize(field: str, value: Any) -> Any:
+    """Puts a value from the browser in the same form as snapshot() so they can be compared."""
+    if value is None:
+        return None
+    if field == "amount":
+        try:
+            return f"{Decimal(str(value).replace(',', '')):.2f}"
+        except Exception:
+            return str(value)
+    if field == "date":
+        return str(value)[:10]
+    return str(value).strip()
+
+
+def check_unchanged(d: models.Disbursement, original: Optional[dict]) -> None:
+    """Refuses a change based on an outdated screen.
+
+    `original` holds the values the person saw for the fields they are changing. If any of
+    those have changed since (someone else edited the entry), the change is refused with 409
+    instead of silently overwriting the other person's edit."""
+    if not original:
+        return
+    current = snapshot(d)
+    stale = [f for f, seen in original.items()
+             if f in DISBURSEMENT_FIELDS and _normalize(f, seen) != current[f]]
+    if stale:
+        labels = ", ".join(FIELD_LABELS[f] for f in stale)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{d.updated_by} changed this entry's {labels} after you opened it. "
+            "Close it and open it again to see the latest version.",
+        )
+
+
 def diff(before: dict, after: dict) -> dict:
     """Only the fields that changed, as {field: [old, new]}."""
     return {k: [before.get(k), after.get(k)] for k in after if before.get(k) != after.get(k)}
@@ -291,7 +328,7 @@ def restore_disbursement(
     current_user: models.User = Depends(security.get_current_superuser),
 ):
     """Brings an archived entry back into its project and totals."""
-    d = db.get(models.Disbursement, disbursement_id)
+    d = db.get(models.Disbursement, disbursement_id, with_for_update=True)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Disbursement log not found")
     if not d.is_archived:
@@ -343,7 +380,7 @@ def restore_project(
 ):
     """Restores a project with the entries that were archived together with it.
     Entries archived on their own before that stay archived."""
-    p = db.get(models.Project, project_id)
+    p = db.get(models.Project, project_id, with_for_update=True)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
     if not p.is_archived:

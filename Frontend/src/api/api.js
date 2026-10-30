@@ -1,4 +1,5 @@
 import { createMockApi } from "./mockAPI";
+import { connectLive } from "./live";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -23,11 +24,13 @@ export class ApiError extends Error {
   }
 }
 
-async function http(path, { method = "GET", body, form, token } = {}) {
+async function http(path, { method = "GET", body, form, upload, token } = {}) {
   const headers = {};
   let payload;
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (form) {
+  if (upload) {
+    payload = upload; // FormData: the browser sets the multipart Content-Type itself
+  } else if (form) {
     headers["Content-Type"] = "application/x-www-form-urlencoded";
     payload = new URLSearchParams(form);
   } else if (body) {
@@ -160,6 +163,16 @@ export function createApi(token, onUnauthorized) {
     updateUser: (id, body) => call(`/users/${id}`, { method: "PATCH", body }),
     resetUserPassword: (id) => call(`/users/${id}/reset-password`, { method: "POST" }),
     deleteUser: (id) => call(`/users/${id}`, { method: "DELETE" }),
+
+    // CSV import (admins only). mode "preview" checks the file; "commit" saves the valid rows.
+    importDisbursements: (file, mode = "preview") => {
+      const data = new FormData();
+      data.append("file", file);
+      return call(`/disbursements/import?mode=${mode}`, { method: "POST", upload: data });
+    },
+
+    // Live updates: returns a function that closes the connection
+    connectLive: (handlers) => connectLive(`${API_URL}/live`, token, handlers),
 
     // Activity Log (admins only)
     listActivity: (params = {}) => {

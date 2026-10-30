@@ -1,0 +1,14 @@
+project_title,date,cv_no,payee,amount
+Plant 1 Import Error Test,2026-10-01,CV-T-0001,Laguna Steel & Metal Supply Corp.,45000.00
+Plant 1 Import Error Test,10/02/2026,CV-T-0002,"Reyes, Cruz & Partners Builders","₱12,500.50"
+Plant 1 Import Error Test,2026-10-03,CV-T-0003,Peñaranda Hardware & Construction Supply,8900
+Plant 1 Import Error Test,2026-13-45,CV-T-0004,Bad Date Supplies,1000.00
+Plant 1 Import Error Test,2026-10-05,CV-T-0005,Negative Amount Trading,-250.00
+Plant 1 Import Error Test,2026-10-06,CV-T-0006,Text Amount Trading,one thousand
+Plant 1 Import Error Test,2026-10-07,CV-T-0001,Duplicate CV Trading,500.00
+,2026-10-08,CV-T-0008,No Project Trading,700.00
+Plant 1 Import Error Test,2026-10-09,CV-T-0009,,300.00
+Plant 1 Import Error Test,2026-10-10,,No CV Trading,300.00
+Plant 1 Import Error Test,2026-10-11,CV-T-0011,Too Precise Trading,10.555
+Plant 1 Import Error Test,2026-10-12,CV-T-0012,Huge Amount Trading,150000000.00
+Plant 1 Import Error Test,2026-10-13,CV-25-0001,Already Imported Trading,1000.00

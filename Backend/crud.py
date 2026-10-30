@@ -141,6 +141,7 @@ def update_disbursement(
     
     # Extract editor_name if provided, otherwise default to current authenticated user
     editor_name = update_data.pop("editor_name", current_user.username)
+    update_data.pop("original", None)  # only used for the conflict check
 
     for field, value in update_data.items():
         setattr(db_disbursement, field, value)

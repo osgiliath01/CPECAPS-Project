@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtStamp } from "../utils/format";
 
 // Admin-only: every account, with controls for the selected one.
-export default function UsersDialog({ api, user, onClose, onChanged }) {
+export default function UsersDialog({ api, user, version, onClose, onChanged }) {
   const ref = useRef(null);
   const [users, setUsers] = useState(null);
   const [q, setQ] = useState("");
@@ -16,7 +16,7 @@ export default function UsersDialog({ api, user, onClose, onChanged }) {
 
   useEffect(() => {
     api.listUsers().then(setUsers, (e) => setError(e.message));
-  }, [api]);
+  }, [api, version]);
 
   async function reload() {
     setUsers(await api.listUsers());

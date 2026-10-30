@@ -55,7 +55,15 @@ export default function EntryDialog({ mode, entry, defaultProject, user, onSave,
           return;
         }
         const why = reason.trim();
-        await onSave({ ...changes, editor_name: user.name, ...(asRequest && why ? { reason: why } : {}) });
+        // The values this person saw for the fields they changed. The backend refuses the
+        // save if someone else changed any of them in the meantime.
+        const original = Object.fromEntries(Object.keys(changes).map((k) => [k, entry[k]]));
+        await onSave({
+          ...changes,
+          original,
+          editor_name: user.name,
+          ...(asRequest && why ? { reason: why } : {}),
+        });
       }
     } catch (err) {
       setError(err.message);

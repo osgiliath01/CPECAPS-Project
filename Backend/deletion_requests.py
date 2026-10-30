@@ -61,7 +61,8 @@ class RequestResponse(BaseModel):
 # ---------- Helpers ----------
 
 def _get_entry(db: Session, disbursement_id: int) -> models.Disbursement:
-    d = db.get(models.Disbursement, disbursement_id)
+    # Locked, so two requests for the same entry can't both slip past the "pending" check
+    d = db.get(models.Disbursement, disbursement_id, with_for_update=True)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Disbursement log not found")
     if d.is_archived:
@@ -95,7 +96,8 @@ def _new_request(d: models.Disbursement, user: models.User, request_type: str, r
 
 
 def _get_pending(db: Session, request_id: int) -> models.DeletionRequest:
-    req = db.get(models.DeletionRequest, request_id)
+    # Locked, so two admins clicking at the same moment can't both approve
+    req = db.get(models.DeletionRequest, request_id, with_for_update=True)
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found")
     if req.status != "pending":
@@ -167,8 +169,9 @@ def request_edit(
 ):
     """Ask an admin to change an entry. Nothing changes until it's approved."""
     d = _get_entry(db, disbursement_id)
+    activity.check_unchanged(d, payload.original)
 
-    proposed = payload.model_dump(exclude_unset=True, exclude={"editor_name", "reason"})
+    proposed = payload.model_dump(exclude_unset=True, exclude={"editor_name", "reason", "original"})
     proposed = {k: activity.plain(v) for k, v in proposed.items() if v is not None}
     before = activity.snapshot(d)
     fields = activity.diff(before, {**before, **proposed})
@@ -230,7 +233,7 @@ def approve_request(
     """Admins only: approve and apply the request, with an optional note to the requester."""
     req = _get_pending(db, request_id)
     _block_self_review(req, current_user)
-    d = db.get(models.Disbursement, req.disbursement_id) if req.disbursement_id else None
+    d = db.get(models.Disbursement, req.disbursement_id, with_for_update=True) if req.disbursement_id else None
 
     if req.request_type == "edit":
         if not d:
@@ -239,6 +242,17 @@ def approve_request(
             raise HTTPException(status.HTTP_400_BAD_REQUEST,
                                 "The entry is archived. Restore it first, or reject this request.")
         fields = (req.changes or {}).get("fields", {})
+        # Refuse if the entry changed after the request was made, so an older request
+        # can't silently undo someone else's newer edit
+        current = activity.snapshot(d)
+        moved = [f for f, (old, _new) in fields.items() if current.get(f) != old]
+        if moved:
+            labels = ", ".join(activity.FIELD_LABELS.get(f, f) for f in moved)
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"The entry's {labels} changed after {req.requested_by} made this request "
+                f"(last edited by {d.updated_by}). Reject it and ask for a new request if still needed.",
+            )
         editor = (req.changes or {}).get("editor_name") or req.requested_by
         new_values = schemas.DisbursementUpdate(
             **{k: v[1] for k, v in fields.items()}, editor_name=editor

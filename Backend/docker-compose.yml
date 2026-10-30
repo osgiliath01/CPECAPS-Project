@@ -17,5 +17,19 @@ services:
       timeout: 5s
       retries: 5
 
+  # The one shared backend. Everyone's frontend points here instead of running their own.
+  api:
+    build: .
+    container_name: caic-api
+    restart: unless-stopped
+    environment:
+      # "db" is the database container above; the backend reaches it inside Docker
+      DATABASE_URL: postgresql+psycopg://postgres:caic123@db:5432/caic_db
+    ports:
+      - "0.0.0.0:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   postgres_data:

@@ -22,6 +22,7 @@ const ACTIONS = [
   ["edit_requested", "Edit requested"],
   ["edit_approved", "Edit approved"],
   ["edit_rejected", "Edit rejected"],
+  ["import", "Imported file"],
   ["project_create", "Created project"],
   ["project_archive", "Archived project"],
   ["project_restore", "Restored project"],
@@ -71,7 +72,7 @@ function Changes({ details }) {
   );
 }
 
-function ActivityTab({ api }) {
+function ActivityTab({ api, version }) {
   const [filters, setFilters] = useState({ entity_type: "", action: "", actor: "", q: "" });
   const [page, setPage] = useState(0);
   const [data, setData] = useState(null);
@@ -89,7 +90,7 @@ function ActivityTab({ api }) {
       live = false;
       clearTimeout(t);
     };
-  }, [api, filters, page]);
+  }, [api, filters, page, version]);
 
   const setFilter = (key) => (e) => {
     setFilters((f) => ({ ...f, [key]: e.target.value }));
@@ -175,7 +176,7 @@ function TimeLeft({ item }) {
   );
 }
 
-function ArchivedTab({ api, onChanged }) {
+function ArchivedTab({ api, version, onChanged }) {
   const [projects, setProjects] = useState(null);
   const [entries, setEntries] = useState(null);
   const [error, setError] = useState("");
@@ -197,7 +198,7 @@ function ArchivedTab({ api, onChanged }) {
       },
       (e) => setError(e.message)
     );
-  }, [api]);
+  }, [api, version]);
 
   async function restore(kind, item) {
     setBusy(`${kind}-${item.id}`);
@@ -299,7 +300,7 @@ function ArchivedTab({ api, onChanged }) {
 }
 
 // Admin-only window: Activity, Archived entries and pending Archive requests.
-export default function ActivityLog({ api, user, onClose, onChanged }) {
+export default function ActivityLog({ api, user, version, onClose, onChanged }) {
   const ref = useRef(null);
   const [tab, setTab] = useState("activity");
 
@@ -327,10 +328,10 @@ export default function ActivityLog({ api, user, onClose, onChanged }) {
       </div>
 
       <div className="log-body">
-        {tab === "activity" && <ActivityTab api={api} />}
-        {tab === "archived" && <ArchivedTab api={api} onChanged={onChanged} />}
-        {tab === "requests" && <DeletionRequests api={api} user={user} onChanged={onChanged} />}
-        {tab === "resets" && <PasswordResets api={api} user={user} onChanged={onChanged} />}
+        {tab === "activity" && <ActivityTab api={api} version={version} />}
+        {tab === "archived" && <ArchivedTab api={api} version={version} onChanged={onChanged} />}
+        {tab === "requests" && <DeletionRequests api={api} user={user} version={version} onChanged={onChanged} />}
+        {tab === "resets" && <PasswordResets api={api} user={user} version={version} onChanged={onChanged} />}
       </div>
 
       <div className="dialog-actions">

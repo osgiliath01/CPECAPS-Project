@@ -68,7 +68,7 @@ def _to_response(req: models.PasswordResetRequest) -> dict:
 
 
 def _get_pending(db: Session, request_id: int, admin: models.User) -> models.PasswordResetRequest:
-    req = db.get(models.PasswordResetRequest, request_id)
+    req = db.get(models.PasswordResetRequest, request_id, with_for_update=True)
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Reset request not found")
     if req.status != "pending":

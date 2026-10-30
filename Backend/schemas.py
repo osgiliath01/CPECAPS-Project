@@ -44,6 +44,9 @@ class DisbursementUpdate(BaseModel):
     payee: Optional[str] = None
     amount: Optional[Decimal] = None
     editor_name: str
+    # The values the editor saw for the fields being changed. If they no longer match,
+    # someone else changed the entry first and the edit is refused (409).
+    original: Optional[dict] = None
 
 
 class DisbursementItemResponse(BaseModel):
