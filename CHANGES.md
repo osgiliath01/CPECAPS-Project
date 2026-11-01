@@ -22,6 +22,7 @@ This document describes every change made to the Calamba Allied Industrial Corpo
    - 4.12 Live updates
    - 4.13 Edit-conflict protection
    - 4.14 Assistant (local AI model)
+   - 4.15 Shared app link, versions and deploys
 5. [Database changes](#5-database-changes)
 6. [API reference](#6-api-reference)
 7. [Activity Log action reference](#7-activity-log-action-reference)
@@ -48,47 +49,73 @@ This document describes every change made to the Calamba Allied Industrial Corpo
 | Other people's changes | Only visible after reloading the page | Appear automatically within ~2 seconds |
 | Two people editing at once | Last save silently won | Outdated edits and approvals are refused with a clear message |
 | Backend | Each teammate ran their own copy | **One shared backend** next to the database (Docker) |
+| Using the app | Everyone ran the code with `npm run dev` | **One link** for everyone: http://database.nyala-ordinal.ts.net/, deployed from GitHub with `deploy.ps1`, version shown in the app |
 | Chat bubble | Placeholder reply | **Assistant** answering questions from the records, using a local AI model (Ollama) |
 
 ---
 
 ## 2. Running the project
 
-There is now **one shared backend** for the whole team, running in Docker on the same machine as the database (`database.nyala-ordinal.ts.net`). Everyone's app talks to it, so everyone sees the same data, live updates work, and the 30-day purge runs in exactly one place.
+Everything runs on **one server** (currently the laptop `aaron`), in Docker: the database, the backend, the app's screens and the AI model server. Everyone else just opens the app in a browser over **Tailscale**:
 
-### On the database machine (once, and after each update)
+> **http://database.nyala-ordinal.ts.net/**
 
-From the `Backend` folder, with Docker running:
+No code, no npm, no Python needed to use it. The version in use is shown in the user menu and on the sign-in page.
 
-```bash
-git pull
-docker compose up -d --build     # starts/updates the database (db) and the backend (api)
-docker compose logs -f api       # optional: watch the backend's output
+### Using the app (testers, adviser, client demos)
+
+1. Connect to Tailscale.
+2. Open **http://database.nyala-ordinal.ts.net/** and sign in.
+
+When a new version is deployed, a bar appears at the top: **"A new version of the app is available"**, with a **Refresh** button.
+
+### Deploying (on the server)
+
+Deploys always come **from GitHub**, never from someone's working folder. `deploy.ps1` (in the project root) builds the pushed code in a separate folder (`.deploy\live`), so your own working folder, branch and unsaved changes are never touched. Data and the downloaded AI model are kept.
+
+```powershell
+cd "D:\Documents\TERM 10\CPECAPS\Project"
+.\deploy.ps1                                      # deploy the latest main
+.\deploy.ps1 -Branch feature/activity-log-archiving   # or a branch (e.g. before it's merged)
 ```
 
-- The backend listens on port **8000**: http://database.nyala-ordinal.ts.net:8000/docs
-- `database.nyala-ordinal.ts.net` is a **Tailscale Service** (`svc:database`) that forwards to this machine. It must forward **both** ports, 5432 (database) and 8000 (backend). Check with `tailscale serve status`; to add 8000: allow `tcp:8000` on the service in the Tailscale admin console, then run `tailscale serve --service=svc:database --tcp=8000 tcp://127.0.0.1:8000`.
-- It connects to the database inside Docker (`db:5432`), and upgrades the database by itself on start (see [section 5](#5-database-changes)).
-- First time only, create the default admin: `docker compose exec api python main.py`
-- First time only, download the assistant's model (about 2.5 GB): `docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M`
-- The `ollama` service is set up to use an **NVIDIA GPU** (see [4.14](#414-assistant-local-ai-model)). On a machine without one, delete the `reservations:` block under `ollama` in `docker-compose.yml`, or that container won't start.
+Then check http://localhost/ and the version in the user menu. Results are also written to `.deploy\deploy.log`.
 
-### On each teammate's computer
+- **Only pushed commits are deployed.** Commit and push first.
+- **Don't run `docker compose up` from the `Backend` folder on the server** any more: that would build your working folder instead of GitHub's code. Use `deploy.ps1`.
+- **Preview a branch** (app screens only) on port 8080, without touching the live app on port 80:
+  ```powershell
+  .\deploy.ps1 -Preview -Branch feature/new-screen     # http://database.nyala-ordinal.ts.net:8080/
+  .\deploy.ps1 -StopPreview
+  ```
+  The preview uses the **live backend and data**, so it's for frontend changes. Backend changes are tested locally (see below), not previewed.
+- **Automatic deploys** (optional): `.\install-autodeploy.ps1` adds a Windows scheduled task that checks GitHub every 5 minutes and deploys `main` when it changed, so merging a pull request updates the shared app. It runs while you're signed in; turn it off with `.\install-autodeploy.ps1 -Remove`. Use it once `main` is stable.
+- If Windows blocks the scripts ("running scripts is disabled"), run once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-Only the frontend runs locally. Point it at the shared backend once:
+### Server setup (first time only)
+
+- **Tailscale:** `database.nyala-ordinal.ts.net` is a **Tailscale Service** (`svc:database`) that forwards to the server. It must forward ports **80** (app), **8000** (backend, for developers), **5432** (database) and, if you use previews, **8080**. For each port: allow `tcp:<port>` on the service in the Tailscale admin console, then run `tailscale serve --service=svc:database --tcp=<port> tcp://127.0.0.1:<port>`. Check with `tailscale serve status`.
+- **Default admin:** `docker compose -p backend exec api python main.py`
+- **AI model** (about 2.5 GB): `docker compose -p backend exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M`
+- **GPU:** the `ollama` service is set up for an **NVIDIA GPU** (see [4.14](#414-assistant-local-ai-model)). On a machine without one, delete the `reservations:` block under `ollama` in `Backend/docker-compose.yml` (and push), or that container won't start.
+- **Port 80** must be free on the server. If another program uses it, change `"0.0.0.0:80:80"` under `web` to e.g. `"0.0.0.0:8081:80"` and use that port in the address.
+- The backend connects to the database inside Docker (`db:5432`) and upgrades it by itself on start (see [section 5](#5-database-changes)).
+- Useful commands (from any folder): `docker compose -p backend ps`, `docker compose -p backend logs -f api`.
+
+### Developing (team members changing code)
+
+Pull the code and run the screens locally against the shared backend:
 
 ```powershell
 cd Frontend
-copy .env.example .env.local      # sets VITE_API_URL to the shared backend
+copy .env.example .env.local      # sets VITE_API_URL to the shared backend (port 8000)
 npm install
 npm run dev
 ```
 
-You must be connected to **Tailscale** to reach the shared backend. Signing in works the same as before.
+Your local screens show **"Development build"** as their version. You must be connected to Tailscale.
 
-### Running a backend locally (development only)
-
-Only when changing backend code. Use a test copy of the database if you can, and stop it when you're done:
+**Changing backend code:** run a backend locally, preferably against a test copy of the database, and stop it when done:
 
 ```powershell
 cd Backend
@@ -96,10 +123,11 @@ cd Backend
 uvicorn auth:app --reload --timeout-graceful-shutdown 3
 ```
 
-and temporarily point your frontend at it with `VITE_API_URL=http://localhost:8000` in `.env.local`. The `--timeout-graceful-shutdown 3` keeps reloads fast, since live-update connections stay open.
+and temporarily point your frontend at it with `VITE_API_URL=http://localhost:8000` in `.env.local`.
 
-- API docs (Swagger): `/docs` on whichever backend you use
-- App: the URL printed by `npm run dev` (usually http://localhost:5173)
+When the work is ready: push, open a pull request into `main`, have it reviewed and merged, then deploy (or let automatic deploys pick it up).
+
+- API docs (Swagger): http://database.nyala-ordinal.ts.net:8000/docs, or `/docs` on your local backend
 
 ## 3. Roles and permissions
 
@@ -341,6 +369,25 @@ The first answer after 30 minutes idle takes longer while the model loads.
 
 **GPU.** On CPU alone, answers take tens of seconds. The `ollama` service is given the NVIDIA GPU through a `reservations: devices` block in `docker-compose.yml` (needs a current NVIDIA driver and Docker Desktop on WSL 2; test with `docker run --rm --gpus=all nvcr.io/nvidia/k8s/cuda-sample:nbody nbody -gpu -benchmark`). Two settings reduce graphics-memory use so more of the model fits: `OLLAMA_FLASH_ATTENTION: 1` and `OLLAMA_KV_CACHE_TYPE: q8_0`. Check where the model runs with `docker compose exec ollama ollama ps` (the PROCESSOR column). On the development laptop's RTX 3050 Laptop GPU (4 GB) it ran **82% on the GPU** before those two settings were added. For the client's server, a GPU with 8 GB or more (e.g. RTX 3060 12 GB) holds the model completely.
 
+### 4.15 Shared app link, versions and deploys
+
+**One link for everyone.** A fourth container, **`web`** (`caic-web`), serves the finished app on port 80: the React screens are built into plain files (`npm run build`) and served by nginx, which also passes `/api/...` on to the backend. So the app and the backend share one address, and nobody needs the code to use the app. Live updates and the assistant's streamed replies pass straight through (no buffering).
+
+**Versions.** Each deploy stamps the app with the commit's date, its short commit ID and branch, e.g. *Version 2026.11.01 · fa86ea2*, plus the branch name when it isn't `main`. It's shown at the bottom of the user menu and on the sign-in page; local `npm run dev` copies show *Development build*. The deployed app also publishes `/version.json`; open screens check it every minute (and when the tab is reopened) and show a **"A new version of the app is available — Refresh"** bar when it changed.
+
+**Deploys from GitHub** (`deploy.ps1`, see [section 2](#2-running-the-project)):
+
+| Command | What it does |
+|---|---|
+| `.\deploy.ps1` | Builds the latest `main` from GitHub and restarts the stack |
+| `.\deploy.ps1 -Branch <name>` | Same, for another pushed branch |
+| `.\deploy.ps1 -Preview -Branch <name>` | Builds only that branch's screens and serves them on port 8080, using the live backend |
+| `.\deploy.ps1 -StopPreview` | Removes the preview |
+| `.\deploy.ps1 -Auto` | Deploys `main` only if it changed since the last deploy (used by the scheduled task) |
+| `.\install-autodeploy.ps1` / `-Remove` | Turns automatic deploys (every 5 minutes) on or off |
+
+The script works in `.deploy\live` and `.deploy\preview` (git worktrees, ignored by git), so it never changes your working folder. It keeps the Compose project name `backend`, so containers, the database and the AI model are reused. Each step is checked; failures are written to `.deploy\deploy.log` and leave the running app as it was.
+
 ---
 
 ## 5. Database changes
@@ -530,14 +577,22 @@ All changes are applied automatically when the backend starts:
 | `live.py` | **new** | Live updates: Activity Log watcher and `/live` stream |
 | `chatbot.py` | **new** | Assistant: `/chat` route, read-only tools, app guide, safety net, action-request handling, thinking-model handling, Ollama connection |
 | `Dockerfile`, `.dockerignore`, `requirements.txt` | **new** | Image for the shared backend (Linux-friendly dependency list) |
-| `docker-compose.yml` | changed | New `api` service, and `ollama` service with GPU access, memory limit and memory-saving settings |
+| `docker-compose.yml` | changed | New `api` service; `web` service (the app on port 80); `ollama` service with GPU access, memory limit and memory-saving settings |
 | `models.py` | changed | Archive columns; `archived_with_project`; `must_change_password`; new `ActivityLog`, `DeletionRequest`, `PasswordResetRequest`; totals skip archived entries |
 | `database.py` | changed | `ensure_schema()` adds new columns; `init_db()` promotes an existing `admin` and logs it |
 | `security.py` | changed | `get_current_superuser`; `get_current_user` blocks temporary passwords (`get_current_user_allow_temporary` allows them); deactivated accounts get `401` |
 | `crud.py` | changed | Archived projects and entries excluded from lists and summaries; hard-delete removed |
 | `schemas.py` | changed | `ProjectResponse.entry_count` |
 
-### Frontend (`Project/Frontend/src`)
+### Project root
+
+| File | Status | What changed |
+|---|---|---|
+| `deploy.ps1` | **new** | Deploys from GitHub; previews; automatic mode |
+| `install-autodeploy.ps1` | **new** | Turns automatic deploys on or off (Windows scheduled task) |
+| `.gitignore` | changed | Ignores `.deploy/` |
+
+### Frontend (`Project/Frontend/src`, plus the build files in `Project/Frontend`)
 
 | File | Status | What changed |
 |---|---|---|
@@ -560,7 +615,11 @@ All changes are applied automatically when the backend starts:
 | `components/ChatWidget.jsx` | changed | Connected to the assistant, with streaming, Stop, New chat and Expand |
 | `components/ChatFormat.jsx` | **new** | Shows tables and **bold** in assistant answers |
 | `api/live.js` | **new** | Live-updates connection with automatic reconnect |
-| `Frontend/.env.example` | **new** | Points the app at the shared backend (copy to `.env.local`) |
+| `Frontend/.env.example` | **new** | Points a local `npm run dev` at the shared backend (copy to `.env.local`) |
+| `Frontend/Dockerfile`, `Frontend/nginx.conf`, `Frontend/.dockerignore` | **new** | Build the app and serve it with nginx, passing `/api/` to the backend |
+| `version.js` | **new** | The version stamp and its label |
+| `components/UpdateBanner.jsx` | **new** | "A new version of the app is available" bar |
+| `App.jsx`, `components/Login.jsx`, `components/AdminMenu.jsx` | changed | Show the update bar and the version |
 
 ---
 
@@ -577,7 +636,10 @@ All changes are applied automatically when the backend starts:
 | GPU | `Backend/docker-compose.yml` (ollama `reservations`) | NVIDIA, all | Delete the block on machines without an NVIDIA GPU |
 | `OLLAMA_FLASH_ATTENTION`, `OLLAMA_KV_CACHE_TYPE` | `Backend/docker-compose.yml` (ollama) | `1`, `q8_0` | Less graphics memory per answer |
 | `OLLAMA_KEEP_ALIVE` | `Backend/docker-compose.yml` (ollama) | 30m | How long the model stays loaded after the last question |
-| `VITE_API_URL` | `Frontend/.env.local` | shared backend | Which backend the app talks to |
+| `VITE_API_URL` | `Frontend/.env.local` (local dev); `/api` in deployed builds | shared backend | Which backend the app talks to |
+| App port | `Backend/docker-compose.yml` (web) | 80 | Change if port 80 is taken on the server |
+| Auto-deploy interval | `install-autodeploy.ps1 -Minutes` | 5 | How often `main` is checked |
+| Update check | `Frontend/src/components/UpdateBanner.jsx` (`CHECK_EVERY_MS`) | 1 minute | How often open screens check for a new version |
 | Token lifetime | `Backend/auth.py` (`/token` route) | 30 minutes | Users are signed out after this |
 | Temporary password length | `Backend/password_resets.py` (`make_temporary_password`) | 10 | |
 | Activity page size | `Frontend/src/components/ActivityLog.jsx` (`PAGE`) | 50 | |
@@ -586,7 +648,7 @@ All changes are applied automatically when the backend starts:
 
 ## 10. Testing checklist
 
-On the server, run `docker compose up -d --build` in `Backend` after pulling changes. Then refresh the app (Ctrl+F5) and sign in again so the new token is issued.
+On the server, deploy with `.\deploy.ps1` (or `-Branch <name>`). Then refresh the app (Ctrl+F5) and sign in again so the new token is issued.
 
 **Roles**
 
@@ -642,6 +704,13 @@ On the server, run `docker compose up -d --build` in `Backend` after pulling cha
 - [ ] `docker compose exec ollama ollama ps` shows the model on the GPU.
 - [ ] Stop the `ollama` container and ask again: the window says the assistant is offline.
 
+**Shared link and deploys**
+
+- [ ] From another computer on Tailscale, http://database.nyala-ordinal.ts.net/ shows the sign-in page with a version like *Version 2026.11.01 · abc1234*.
+- [ ] Live updates and the assistant work through the shared link.
+- [ ] Push a small change and deploy. Within a minute, open screens show **"A new version of the app is available"**; Refresh shows the new version.
+- [ ] `.\deploy.ps1 -Preview -Branch <name>` serves that branch on port 8080; `-StopPreview` removes it.
+
 **Activity Log**
 
 - [ ] Every action above appears. **Record type** filters Entries, Projects and Accounts.
@@ -665,4 +734,5 @@ These were found during the work but are not fixed yet:
    docker compose exec api python -c "import database, models, security; db = database.SessionLocal(); u = db.query(models.User).filter_by(username='admin').first(); u.hashed_password = security.get_password_hash('admin123'); db.commit()"
    ```
 9. **GPU setting is machine-specific:** the `reservations:` block for the `ollama` service only works on machines with an NVIDIA GPU and its driver. Remove it on other machines, including the client's server if it has no NVIDIA GPU.
-10. **Token-signing key warning:** the backend logs `InsecureKeyLengthWarning` because `SECRET_KEY` is short. It works, but should become a long random value (see item 4); changing it signs everyone out once.
+10. **The server is a laptop:** the shared link, deploys and automatic deploys only work while it's on, awake, signed in, running Docker Desktop and connected to Tailscale. For the client, use an always-on server.
+11. **Token-signing key warning:** the backend logs `InsecureKeyLengthWarning` because `SECRET_KEY` is short. It works, but should become a long random value (see item 4); changing it signs everyone out once.

@@ -5,3 +5,5 @@ __pycache__/
 *.db
 tasks.db
 *_checker.py
+# deploy.ps1 checkouts and log (server only)
+.deploy/

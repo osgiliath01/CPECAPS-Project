@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import avatar from "../assets/default_user.jpg";
+import { versionLabel } from "../version";
 
 export default function AdminMenu({ user, initial, onPassword, onUsers, onLogout }) {
   const [open, setOpen] = useState(false);
@@ -62,6 +63,7 @@ export default function AdminMenu({ user, initial, onPassword, onUsers, onLogout
           <button role="menuitem" onClick={onLogout}>
             Sign out
           </button>
+          <p className="version-line">{versionLabel()}</p>
         </div>
       )}
     </div>

@@ -25,6 +25,14 @@ button { cursor: pointer; }
 .small { font-size: 0.85rem; }
 .pad { padding: 0.5rem 0; }
 .boot { padding: 3rem; text-align: center; }
+.version-line { margin: 0.8rem 0 0; font-size: 0.72rem; color: var(--muted); text-align: center; }
+.dropdown .version-line { margin: 0.4rem 0.9rem 0.2rem; text-align: left; }
+.update-banner {
+  position: fixed; top: 0.8rem; left: 50%; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 0.8rem; padding: 0.55rem 0.6rem 0.55rem 1.1rem;
+  background: #1a1a1a; color: #fff; border-radius: 999px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  font-size: 0.9rem; max-width: calc(100vw - 2rem);
+}
 
 /* ---------- Pills ---------- */
 .pill {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import logo from "../assets/logo.webp";
 import LoginSlideshow from "./LoginSlideshow";
+import { versionLabel } from "../version";
 
 const EMPTY = { name: "", username: "", password: "", confirm: "", message: "" };
 
@@ -182,6 +183,7 @@ export default function Login({ onLogin, onRegister, onResetRequest }) {
             </>
           )}
         </div>
+        <p className="version-line">{versionLabel()}</p>
       </form>
     </main>
   );

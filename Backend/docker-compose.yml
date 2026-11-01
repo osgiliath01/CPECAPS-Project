@@ -36,6 +36,24 @@ services:
       db:
         condition: service_healthy
 
+  # The app itself: built React files served by nginx, with /api/... passed to the backend.
+  # Everyone opens http://<server>/ in a browser; nobody needs the code or npm.
+  web:
+    build:
+      context: ../Frontend
+      args:
+        # Version stamp, set by deploy.ps1; "dev" when built by hand
+        APP_VERSION: ${APP_VERSION:-dev}
+        APP_COMMIT: ${APP_COMMIT:-dev}
+        APP_BRANCH: ${APP_BRANCH:-local}
+        APP_BUILT: ${APP_BUILT:-}
+    container_name: caic-web
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:80:80"
+    depends_on:
+      - api
+
   # Local AI model server for the chatbot. Private: no published port, so only the
   # api container can reach it (at http://ollama:11434). Download a model once with:
   #   docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M

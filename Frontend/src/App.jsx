@@ -4,6 +4,7 @@ import { createApi, DEMO } from "./api/api";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import ForcePasswordChange from "./components/ForcePasswordChange";
+import UpdateBanner from "./components/UpdateBanner";
 
 export default function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem("token") || (DEMO ? "demo" : null));
@@ -44,17 +45,18 @@ export default function App() {
     }
   }
 
+  let screen;
   if (!token)
-    return (
+    screen = (
       <Login
         onLogin={handleLogin}
         onRegister={handleRegister}
         onResetRequest={(username, message) => createApi(null, null).requestPasswordReset(username, message)}
       />
     );
-  if (!user) return <p className="boot">Loading your workspace…</p>;
-  if (user.must_change_password)
-    return (
+  else if (!user) screen = <p className="boot">Loading your workspace…</p>;
+  else if (user.must_change_password)
+    screen = (
       <ForcePasswordChange
         api={api}
         user={user}
@@ -62,5 +64,12 @@ export default function App() {
         onLogout={logout}
       />
     );
-  return <Dashboard api={api} user={user} onLogout={logout} />;
+  else screen = <Dashboard api={api} user={user} onLogout={logout} />;
+
+  return (
+    <>
+      {screen}
+      <UpdateBanner />
+    </>
+  );
 }
