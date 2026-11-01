@@ -80,6 +80,9 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
   loadLoginRequestsRef.current = loadLoginRequests;
   // Badge counts. Admins: requests and password resets waiting. Staff: answers not yet seen.
   const [pending, setPending] = useState({ requests: 0, resets: 0, accounts: 0, names: 0, responses: 0 });
+  // Bumped after the user's answers are marked as read, so the badge is counted again. Each
+  // recount cancels the one before it, so an answer that arrives late can't bring the badge back.
+  const [pendingVersion, setPendingVersion] = useState(0);
   const reqId = useRef(0);
 
   const loadEntries = useCallback(async () => {
@@ -176,7 +179,7 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
     return () => {
       cancelled = true;
     };
-  }, [api, user.is_superuser, liveVersion]);
+  }, [api, user.is_superuser, liveVersion, pendingVersion]);
 
   // Live updates: when anyone changes something, reload what's on screen
   const refreshRef = useRef(refresh);
@@ -399,7 +402,10 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
             pending={pending}
             profile={profile}
             onProfileChanged={loadProfile}
-            onSeen={() => setPending((p) => ({ ...p, responses: 0 }))}
+            onSeen={() => {
+              setPending((p) => ({ ...p, responses: 0 }));
+              setPendingVersion((v) => v + 1); // recount, dropping any count that was already on its way
+            }}
           />
         ) : (
 
