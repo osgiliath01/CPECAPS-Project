@@ -36,7 +36,9 @@ ensure_database_exists(DATABASE_URL)
 # 2. Main Database Engine
 engine = create_engine(
     DATABASE_URL,
-    pool_size=10,
+    # Up to 40 connections: matches the 40 requests the backend works on at once, so none of
+    # them waits for a connection. PostgreSQL allows 100 by default.
+    pool_size=20,
     max_overflow=20,
     pool_pre_ping=True,
     connect_args={"connect_timeout": 5}

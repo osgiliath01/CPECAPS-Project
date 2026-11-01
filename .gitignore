@@ -7,3 +7,5 @@ tasks.db
 *_checker.py
 # deploy.ps1 checkouts and log (server only)
 .deploy/
+# database backups (contain all the data: never commit)
+*.sql

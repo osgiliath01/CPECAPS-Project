@@ -660,8 +660,8 @@ All changes are applied automatically when the backend starts:
 | `Dockerfile`, `.dockerignore`, `requirements.txt` | **new** | Image for the shared backend (Linux-friendly dependency list) |
 | `docker-compose.yml` | changed | New `api` service; `web` service (the app on port 80); `ollama` service with GPU access, memory limit and memory-saving settings |
 | `models.py` | changed | Archive columns; `archived_with_project`; `must_change_password`; new `ActivityLog`, `DeletionRequest`, `PasswordResetRequest`; totals skip archived entries |
-| `database.py` | changed | `ensure_schema()` adds new columns; `init_db()` promotes an existing `admin` and logs it |
-| `security.py` | changed | `get_current_superuser`; `get_current_user` blocks temporary passwords (`get_current_user_allow_temporary` allows them); deactivated accounts get `401` |
+| `database.py` | changed | `ensure_schema()` adds new columns; `init_db()` promotes an existing `admin` and logs it; connection pool raised to 40 |
+| `security.py` | changed | `get_current_superuser`; `get_current_user` blocks temporary passwords (`get_current_user_allow_temporary` allows them); deactivated accounts get `401`; `user_from_token` for streaming routes (doesn't hold a database connection) |
 | `crud.py` | changed | Archived projects and entries excluded from lists and summaries; hard-delete removed |
 | `schemas.py` | changed | `ProjectResponse.entry_count` |
 
@@ -672,6 +672,7 @@ All changes are applied automatically when the backend starts:
 | `README.md` | **new** | This document (replaces the earlier `CHANGES.md`) |
 | `deploy.ps1` | **new** | Deploys from GitHub; previews; automatic mode |
 | `install-autodeploy.ps1` | **new** | Turns automatic deploys on or off (Windows scheduled task) |
+| `loadtest/locustfile.py` | **new** | Load test: simulated staff, admins and assistant users |
 | `.gitignore` | changed | Ignores `.deploy/` |
 
 ### Frontend (`Project/Frontend/src`, plus the build files in `Project/Frontend`)
@@ -796,6 +797,45 @@ On the server, deploy with `.\deploy.ps1` (or `-Branch <name>`). Then refresh th
 **Activity Log**
 
 - [ ] Every action above appears. **Record type** filters Entries, Projects and Accounts.
+
+### Load testing (how many people at once)
+
+`loadtest/locustfile.py` simulates many people using the app at once with **[Locust](https://locust.io)**, and measures response times and errors as the number grows.
+
+**Simulated users**
+
+| Kind | Share | What they do |
+|---|---|---|
+| `StaffUser` | 8 of 9 | Keep a live-updates connection open; open Voucher Control (the project list plus one summary per project, as the screens do); open projects; check My requests; with `LT_WRITE=1`, add entries to the "ZZ Load Test" project |
+| `AdminUser` | 1 of 9 | Same browsing, plus the Activity Log, requests, archived items and users (only if an admin test account is set) |
+| `AssistantUser` | optional | Asks the assistant questions; reports "first words" and "whole answer" times (only with `LT_ASSISTANT=1`) |
+
+Each pauses 5–30 seconds between actions, like a person reading. Each account signs in once per run, so the Activity Log isn't flooded with sign-ins.
+
+**Before testing**
+
+1. **Back up the database:** `docker compose -p backend exec db pg_dump -U postgres caic_db > backup.sql`
+2. **Create test accounts:** on the sign-in page, create e.g. `loadtest` and `loadtestadmin`, then make `loadtestadmin` an admin in **Manage users**.
+3. Test at a **quiet time**, from a **different computer** than the server (otherwise the test competes with the server for CPU), connected to Tailscale.
+
+**Running it** (PowerShell, project folder):
+
+```powershell
+pip install locust
+$env:LT_USER = "loadtest";        $env:LT_PASS = "<password>"
+$env:LT_ADMIN = "loadtestadmin";  $env:LT_ADMIN_PASS = "<password>"
+locust -f loadtest/locustfile.py --host http://database.nyala-ordinal.ts.net/api
+```
+
+Open http://localhost:8089, set **Number of users** and **Ramp up** (users added per second), and start. Raise the number in steps (5, 10, 25, 50, 100, 200), a few minutes each. Meanwhile, on the server, watch `docker stats` (CPU and memory per container).
+
+Options: `$env:LT_WRITE = "1"` also adds entries (to "ZZ Load Test"; archive that project afterwards); `$env:LT_LIVE = "0"` skips live-update connections; `$env:LT_ASSISTANT = "1"` includes assistant users. Test the assistant separately, with only a few users (1, 3, 5, 10): it answers one question at a time, so what matters is how long the last person waits. Use `--host http://database.nyala-ordinal.ts.net:8000` to test the backend without the `web` container.
+
+**Reading the results:** the practical maximum is the number of users at which the **95th percentile** response time goes above about 1 second, or **failures** appear. The **Download Data** tab saves the results as CSV for reports.
+
+**Finding from the first load test (Nov 1, 2026):** 31 users ran with 0% failures and a 95th percentile of 120 ms, but at **100 users the app stalled** (requests took 30–90 s, 6% failures). Cause: the live-updates stream (`/live`) and the assistant (`/chat`) checked the sign-in through a dependency whose database session FastAPI keeps open until the response ends, so **every open browser tab held one of the 30 database connections**. Past ~30 open tabs, nothing else could reach the database. Fixed by checking the sign-in for streaming routes with a short session that closes immediately (`security.user_from_token`), and by raising the connection pool to 40 to match the backend's 40 simultaneous requests. Re-run the same test to compare.
+
+**Likely limits** (to watch for): Voucher Control loads one summary per project, so each page load is 100+ requests; a change by anyone makes every open screen reload the list at once; the backend runs as one process with 30 database connections; the assistant answers one question at a time.
 
 ---
 

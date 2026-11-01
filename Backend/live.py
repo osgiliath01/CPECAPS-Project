@@ -113,9 +113,13 @@ def _sse(data: dict, event: Optional[str] = None) -> str:
 @router.get("/live")
 async def live_updates(
     request: Request,
-    current_user: models.User = Depends(security.get_current_user),
+    token: str = Depends(security.oauth2_scheme),
 ):
-    """Server-Sent Events stream for the signed-in user. The browser keeps it open."""
+    """Server-Sent Events stream for the signed-in user. The browser keeps it open.
+
+    The sign-in is checked with a short database session (security.user_from_token), so an
+    open stream doesn't hold a database connection."""
+    current_user = await run_in_threadpool(security.user_from_token, token)
     user_id, username, is_admin = current_user.id, current_user.username, current_user.is_superuser
     queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
     hub.queues.add(queue)

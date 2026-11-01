@@ -763,8 +763,12 @@ def _event(kind: str, text: Optional[str] = None) -> str:
 
 
 @router.post("/chat")
-def chat(payload: ChatRequest, current_user: models.User = Depends(security.get_current_user)):
-    """Ask the assistant. Streams the answer as newline-delimited JSON (see the module docstring)."""
+def chat(payload: ChatRequest, token: str = Depends(security.oauth2_scheme)):
+    """Ask the assistant. Streams the answer as newline-delimited JSON (see the module docstring).
+
+    The sign-in is checked with a short database session, so a long answer doesn't hold a
+    database connection (see security.user_from_token)."""
+    current_user = security.user_from_token(token)
     user = {"id": current_user.id, "username": current_user.username, "name": current_user.name,
             "is_admin": current_user.is_superuser}
     tools = [spec for fn, admin_only, status, spec in TOOLS.values() if user["is_admin"] or not admin_only]

@@ -96,6 +96,48 @@ def get_current_user(
     return user
 
 
+def user_from_token(token: str) -> models.User:
+    """Checks a sign-in token using a short database session that is closed straight away.
+
+    For streaming routes (/live, /chat). With Depends(get_current_user), FastAPI keeps the
+    database session, and its connection, open until the response ends: for a live-updates
+    stream that's as long as the browser tab is open, so ~30 open tabs used up every database
+    connection and the whole app stalled. Same checks as get_current_user."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: Optional[str] = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except jwt.PyJWTError:
+        raise credentials_exception
+
+    db = database.SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.username == username).first()
+        if user is None:
+            raise credentials_exception
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="This account has been deactivated.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if user.must_change_password:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Set a new password first. You're still using a temporary one.",
+            )
+        db.expunge(user)  # keep using its loaded fields after the session is closed
+        return user
+    finally:
+        db.close()
+
+
 def get_current_superuser(
     current_user: models.User = Depends(get_current_user),
 ) -> models.User:
