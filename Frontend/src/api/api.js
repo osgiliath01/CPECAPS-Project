@@ -171,6 +171,53 @@ export function createApi(token, onUnauthorized) {
       return call(`/disbursements/import?mode=${mode}`, { method: "POST", upload: data });
     },
 
+    // Assistant: streams the answer; onEvent gets {type: "status" | "delta" | "error" | "done", text}
+    chat: async (messages, onEvent, signal) => {
+      let res;
+      try {
+        res = await fetch(`${API_URL}/chat`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ messages }),
+          signal,
+        });
+      } catch (e) {
+        if (e.name === "AbortError") throw e;
+        throw new ApiError("Can't reach the server. Check your connection and that the API is running.", 0);
+      }
+      if (!res.ok) {
+        if (res.status === 401 && onUnauthorized) onUnauthorized();
+        let detail = "";
+        try {
+          const data = await res.json();
+          detail = Array.isArray(data.detail) ? data.detail.map((d) => d.msg).join(" ") : data.detail;
+        } catch {
+          /* body wasn't JSON */
+        }
+        throw new ApiError(detail || `Request failed (${res.status}).`, res.status);
+      }
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let cut;
+        while ((cut = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, cut).trim();
+          buffer = buffer.slice(cut + 1);
+          if (!line) continue;
+          let event;
+          try {
+            event = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          onEvent(event);
+        }
+      }
+    },
+
     // Live updates: returns a function that closes the connection
     connectLive: (handlers) => connectLive(`${API_URL}/live`, token, handlers),
 

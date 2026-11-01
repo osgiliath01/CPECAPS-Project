@@ -273,6 +273,9 @@ def list_activity(
     query = db.query(models.ActivityLog)
     if action:
         query = query.filter(models.ActivityLog.action == action)
+    else:
+        # Older "Asked the assistant" rows are only shown when that action is picked in the filter
+        query = query.filter(models.ActivityLog.action != "chat")
     if actor:
         query = query.filter(models.ActivityLog.actor.ilike(f"%{actor}%"))
     if entity_type:

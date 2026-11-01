@@ -20,6 +20,7 @@ import password_resets
 import users_admin
 import imports
 import live
+import chatbot
 
 # Create database tables automatically, then add any new columns to existing tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -64,6 +65,7 @@ app.include_router(password_resets.router)
 app.include_router(users_admin.router)
 app.include_router(imports.router)
 app.include_router(live.router)
+app.include_router(chatbot.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins during development

@@ -410,7 +410,7 @@ export default function Dashboard({ api, user, onLogout }) {
           {toast}
         </div>
       )}
-      <ChatWidget />
+      <ChatWidget api={api} user={user} />
     </div>
   );
 }

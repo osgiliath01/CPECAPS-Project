@@ -1,6 +1,6 @@
-# CPECAPS Project — Changes (October 30–31, 2026)
+# CPECAPS Project — Changes (October 30 – November 1, 2026)
 
-This document describes every change made to the Calamba Allied Industrial Corporation voucher system on October 30–31, 2026: what was added, how each feature behaves, the database and API changes, and how to test them.
+This document describes every change made to the Calamba Allied Industrial Corporation voucher system between October 30 and November 1, 2026: what was added, how each feature behaves, the database and API changes, and how to test them.
 
 **Contents**
 
@@ -21,6 +21,7 @@ This document describes every change made to the Calamba Allied Industrial Corpo
    - 4.11 CSV import
    - 4.12 Live updates
    - 4.13 Edit-conflict protection
+   - 4.14 Assistant (local AI model)
 5. [Database changes](#5-database-changes)
 6. [API reference](#6-api-reference)
 7. [Activity Log action reference](#7-activity-log-action-reference)
@@ -47,6 +48,7 @@ This document describes every change made to the Calamba Allied Industrial Corpo
 | Other people's changes | Only visible after reloading the page | Appear automatically within ~2 seconds |
 | Two people editing at once | Last save silently won | Outdated edits and approvals are refused with a clear message |
 | Backend | Each teammate ran their own copy | **One shared backend** next to the database (Docker) |
+| Chat bubble | Placeholder reply | **Assistant** answering questions from the records, using a local AI model (Ollama) |
 
 ---
 
@@ -65,8 +67,11 @@ docker compose logs -f api       # optional: watch the backend's output
 ```
 
 - The backend listens on port **8000**: http://database.nyala-ordinal.ts.net:8000/docs
+- `database.nyala-ordinal.ts.net` is a **Tailscale Service** (`svc:database`) that forwards to this machine. It must forward **both** ports, 5432 (database) and 8000 (backend). Check with `tailscale serve status`; to add 8000: allow `tcp:8000` on the service in the Tailscale admin console, then run `tailscale serve --service=svc:database --tcp=8000 tcp://127.0.0.1:8000`.
 - It connects to the database inside Docker (`db:5432`), and upgrades the database by itself on start (see [section 5](#5-database-changes)).
 - First time only, create the default admin: `docker compose exec api python main.py`
+- First time only, download the assistant's model (about 2.5 GB): `docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M`
+- The `ollama` service is set up to use an **NVIDIA GPU** (see [4.14](#414-assistant-local-ai-model)). On a machine without one, delete the `reservations:` block under `ollama` in `docker-compose.yml`, or that container won't start.
 
 ### On each teammate's computer
 
@@ -290,6 +295,52 @@ Status changes were already protected (a request can't be approved twice, an ent
 - **Approving an edit request** is refused if the entry changed after the request was made, so an older request can't silently undo someone's newer edit. The message tells the admin to reject it and ask for a new request.
 - **Simultaneous clicks** (two admins approving at the same moment, two requests for one entry, editing while archiving) are serialised with database row locks (`SELECT … FOR UPDATE`), so only the first one goes through.
 
+### 4.14 Assistant (local AI model)
+
+The chat bubble (bottom right) is now an assistant that answers questions about the records, for example *"Which projects spent the most this year?"*, *"Show the latest payments to Laguna Steel"* or *"Spending per month for Plant 2 Roof Replacement"*.
+
+**Where it runs.** A local model server, **Ollama**, runs as a third container (`caic-ollama`) in the same Docker stack. It has no published port: only the backend can reach it, nobody on the network can use the model directly, and no data leaves the server. The model is set by `OLLAMA_MODEL` in `docker-compose.yml`, currently **`qwen3:4b-instruct-2507-q4_K_M`**. Download it once:
+
+```bash
+docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+```
+
+**How answers are made.** The model never reads the database itself. It is given read-only **tools**; when it calls one, the backend runs the real query and returns the result. Totals are calculated by the database, not the model.
+
+| Tool | Who | What it does |
+|---|---|---|
+| `overview` | everyone | Counts for the whole system: projects (and how many are empty), entries, payees, overall total, date range; admins also see archived counts |
+| `search_entries` | everyone | Entries matching a project, payee, CV#, date range or amount range: count, total, latest rows |
+| `summarize` | everyone | Totals grouped by project, payee or month (top 50 at most, with the full number of groups) |
+| `recent_activity` | admins | Counts and latest actions from the Activity Log |
+| `pending_requests` | admins | Pending archive/edit requests and password resets |
+
+- Archived entries and projects are always excluded, like on the screens.
+- Names match loosely and ignore capitalisation ("plant 2 roof" finds "Plant 2 Roof Replacement"). A name not found as a project is tried as a payee, and the reverse; if neither matches, the closest names are suggested. The model is told not to comment on capitalisation or which field matched, and to use names as the records spell them. A one-word project named after a common word (e.g. "Title") is only matched when put in quotes.
+- **Thinking models** (such as some Qwen3 builds) reason before answering. The backend asks Ollama whether the model does this, keeps the reasoning out of the reply (the window shows "Thinking…" meanwhile), and strips any reasoning that leaks through anyway.
+- Dates can be `YYYY-MM-DD`, `YYYY-MM` or `YYYY`; the model is told today's date.
+- **Read-only:** it can't change, archive or approve anything. Requests like "delete X", "can you archive…" or "change the amount…", and "how do I…" questions, skip the lookups: the reply starts by saying it can't do that from the chat, then gives the steps for the user's role (from a short built-in guide to the app). It doesn't list entries for these.
+- **App guide:** the model is given a short guide to the app for the user's role (who can add, edit, archive, import, restore, and where the buttons are), so its directions match the screens. Update it in `chatbot.py` (`_GUIDE_COMMON`, `_GUIDE_USER`, `_GUIDE_ADMIN`) when buttons change.
+- If the model states amounts that weren't looked up in this question or earlier in the conversation, a note is added saying the figures are unverified. Reformatting an earlier answer ("tabulate it") doesn't trigger it.
+- **Safety net for small models:** if the model answers a data question without using a tool (small models often reply "no tool can do that"), that reply is held back. The backend picks the lookup from the question itself (project or payee names, even partial ones like "plant 2 roof" or "laguna steel"; CV numbers; "this year", "last month", "per month", "most", "top"), runs it, and has the model answer from the real result. A question counts as a data question if it uses words like "entries" or "total", **or names a known project, payee or CV number** (so "what about bamban gas station?" is covered), and the model is told never to reuse an earlier answer's figures for a different name.
+
+**In the chat window.** The window is 480 × 680 px (nearly full-screen on phones). Replies stream in, with a status such as "Adding up totals…" while a lookup runs; answers to data questions appear all at once, since the backend first checks that the records were looked up. Lists of entries are shown as **real tables** (amounts right-aligned, sideways scrolling when wide), and **bold** text is supported. **Expand** widens the window to about 980 px for tables, **Stop** ends an answer early, and **New chat** clears the conversation (the last 12 messages are sent each time, so follow-ups like "and last month?" work). If the model server is down or the model isn't downloaded, the window says so.
+
+**Not written to the Activity Log**, since questions don't change any records and would flood it. Each question is noted in the backend's console output instead (`docker compose logs api`), as `[chat] user=… model=… lookups=… seconds=…`, without the question text. Older "Asked the assistant" rows stay hidden unless that action is picked in the Activity filter.
+
+**Choosing a model.** To switch, pull the model, set `OLLAMA_MODEL` (and `OLLAMA_THINK` if needed), and run `docker compose up -d`:
+
+| Model | Download | Notes |
+|---|---|---|
+| `qwen3:0.6b` | ~0.5 GB | Lightest; proves the setup works, but often misreads questions or skips the tools |
+| `qwen3:1.7b` | ~1.2 GB | Lightest that's reasonably reliable |
+| `qwen3:4b` | ~2.5 GB | A *thinking* model: reasons before every answer, so it's slower on CPU |
+| `qwen3:4b-instruct-2507-q4_K_M` | ~2.5 GB | **In use.** Answers directly; needs `OLLAMA_THINK: "false"` and the `ollama` memory limit at `6g` |
+
+The first answer after 30 minutes idle takes longer while the model loads.
+
+**GPU.** On CPU alone, answers take tens of seconds. The `ollama` service is given the NVIDIA GPU through a `reservations: devices` block in `docker-compose.yml` (needs a current NVIDIA driver and Docker Desktop on WSL 2; test with `docker run --rm --gpus=all nvcr.io/nvidia/k8s/cuda-sample:nbody nbody -gpu -benchmark`). Two settings reduce graphics-memory use so more of the model fits: `OLLAMA_FLASH_ATTENTION: 1` and `OLLAMA_KV_CACHE_TYPE: q8_0`. Check where the model runs with `docker compose exec ollama ollama ps` (the PROCESSOR column). On the development laptop's RTX 3050 Laptop GPU (4 GB) it ran **82% on the GPU** before those two settings were added. For the client's server, a GPU with 8 GB or more (e.g. RTX 3060 12 GB) holds the model completely.
+
 ---
 
 ## 5. Database changes
@@ -419,6 +470,7 @@ All changes are applied automatically when the backend starts:
 |---|---|---|---|
 | GET | `/activity-logs` | admin | Query: `entity_type`, `action`, `actor`, `q`, `limit` (≤500), `offset`. Returns `{total, items}` |
 | GET | `/live` | user | Server-Sent Events stream of change notices (`hello`, messages, `resync`, `bye`) |
+| POST | `/chat` | user | Ask the assistant: `{messages: [{role, content}]}`. Streams NDJSON events (`status`, `delta`, `error`, `done`) |
 
 ### Common error responses
 
@@ -458,6 +510,7 @@ All changes are applied automatically when the backend starts:
 | `admin_reset` | Password reset by admin | Reset from Manage users | user |
 | `user_update` | Updated account | Rename, role or status change | user |
 | `user_delete` | Deleted account | Account deleted | user |
+| `chat` | Asked the assistant | No longer recorded (older rows only, hidden by default) | user |
 | `promote_admin` | Made admin | Default admin created or promoted by `init_db` | user |
 
 ---
@@ -475,8 +528,9 @@ All changes are applied automatically when the backend starts:
 | `users_admin.py` | **new** | Manage users routes with self and last-admin protection |
 | `imports.py` | **new** | CSV import with preview and per-row validation |
 | `live.py` | **new** | Live updates: Activity Log watcher and `/live` stream |
+| `chatbot.py` | **new** | Assistant: `/chat` route, read-only tools, app guide, safety net, action-request handling, thinking-model handling, Ollama connection |
 | `Dockerfile`, `.dockerignore`, `requirements.txt` | **new** | Image for the shared backend (Linux-friendly dependency list) |
-| `docker-compose.yml` | changed | New `api` service next to `db` |
+| `docker-compose.yml` | changed | New `api` service, and `ollama` service with GPU access, memory limit and memory-saving settings |
 | `models.py` | changed | Archive columns; `archived_with_project`; `must_change_password`; new `ActivityLog`, `DeletionRequest`, `PasswordResetRequest`; totals skip archived entries |
 | `database.py` | changed | `ensure_schema()` adds new columns; `init_db()` promotes an existing `admin` and logs it |
 | `security.py` | changed | `get_current_superuser`; `get_current_user` blocks temporary passwords (`get_current_user_allow_temporary` allows them); deactivated accounts get `401` |
@@ -487,12 +541,12 @@ All changes are applied automatically when the backend starts:
 
 | File | Status | What changed |
 |---|---|---|
-| `api/api.js` | changed | Methods for requests, archive/restore, Activity Log, password resets and users; `me()` reads role and temporary-password flag; UTF-8 token decoding |
+| `api/api.js` | changed | Methods for requests, archive/restore, Activity Log, password resets, users, import, live updates and the assistant (streaming); `me()` reads role and temporary-password flag; UTF-8 token decoding |
 | `App.jsx` | changed | Passes the reset handler to Login; shows **Set a new password** when required |
-| `App.css` | changed | Yellow focus ring, textarea styling, wide dialogs, tabs, badges, filters, countdowns, temporary-password box, user panel |
+| `App.css` | changed | Yellow focus ring, textarea styling, wide dialogs, tabs, badges, filters, countdowns, temporary-password box, user panel, Live dot, import window, larger chat window and chat tables |
 | `components/Login.jsx` | changed | **Forgot password?** mode and confirmation |
 | `components/ForcePasswordChange.jsx` | **new** | Forced new-password screen |
-| `components/Dashboard.jsx` | changed | Activity Log / My requests buttons; Manage users; request-based editing for normal users; project archiving |
+| `components/Dashboard.jsx` | changed | Activity Log / My requests buttons; Manage users; request-based editing for normal users; project archiving; import; live updates and Live dot; passes the user to the assistant |
 | `components/SummaryOfExpenses.jsx` | changed | Edit / Archive for admins, Request edit / Request archive for users; reason box |
 | `components/EntryDialog.jsx` | changed | **Request changes** mode with an optional reason |
 | `components/ProjectsTable.jsx` | changed | Admin **Archive** button and confirmation |
@@ -503,6 +557,8 @@ All changes are applied automatically when the backend starts:
 | `components/UsersDialog.jsx` | **new** | Manage users window |
 | `components/AdminMenu.jsx` | changed | **Manage users** menu item for admins |
 | `components/ImportDialog.jsx` | **new** | Import window with preview |
+| `components/ChatWidget.jsx` | changed | Connected to the assistant, with streaming, Stop, New chat and Expand |
+| `components/ChatFormat.jsx` | **new** | Shows tables and **bold** in assistant answers |
 | `api/live.js` | **new** | Live-updates connection with automatic reconnect |
 | `Frontend/.env.example` | **new** | Points the app at the shared backend (copy to `.env.local`) |
 
@@ -515,6 +571,12 @@ All changes are applied automatically when the backend starts:
 | `RETENTION_DAYS` | `Backend/activity.py` | 30 | Days before archived items are deleted permanently. Set to `0` temporarily to test the purge |
 | `PURGE_EVERY_SECONDS` | `Backend/auth.py` | 3600 | How often the purge runs |
 | `LIVE_CHECK_SECONDS` | `Backend/live.py` | 1.5 | How often the backend looks for new changes to push |
+| `OLLAMA_MODEL` | `Backend/docker-compose.yml` (api) | `qwen3:4b-instruct-2507-q4_K_M` | Which model the assistant uses |
+| `OLLAMA_THINK` | `Backend/docker-compose.yml` (api) | `false` | `auto` asks Ollama whether the model thinks; `false`/`true` override it (Ollama labels all Qwen3 models as thinking) |
+| Ollama memory limit | `Backend/docker-compose.yml` (ollama) | 6g | Enough for a 4B model; 4g is fine for 1.7B and smaller |
+| GPU | `Backend/docker-compose.yml` (ollama `reservations`) | NVIDIA, all | Delete the block on machines without an NVIDIA GPU |
+| `OLLAMA_FLASH_ATTENTION`, `OLLAMA_KV_CACHE_TYPE` | `Backend/docker-compose.yml` (ollama) | `1`, `q8_0` | Less graphics memory per answer |
+| `OLLAMA_KEEP_ALIVE` | `Backend/docker-compose.yml` (ollama) | 30m | How long the model stays loaded after the last question |
 | `VITE_API_URL` | `Frontend/.env.local` | shared backend | Which backend the app talks to |
 | Token lifetime | `Backend/auth.py` (`/token` route) | 30 minutes | Users are signed out after this |
 | Temporary password length | `Backend/password_resets.py` (`make_temporary_password`) | 10 | |
@@ -524,7 +586,7 @@ All changes are applied automatically when the backend starts:
 
 ## 10. Testing checklist
 
-Restart `uvicorn auth:app --reload`, refresh the app, and sign in again so the new token is issued.
+On the server, run `docker compose up -d --build` in `Backend` after pulling changes. Then refresh the app (Ctrl+F5) and sign in again so the new token is issued.
 
 **Roles**
 
@@ -570,6 +632,16 @@ Restart `uvicorn auth:app --reload`, refresh the app, and sign in again so the n
 - [ ] Both admins open Edit on the same entry and change the amount. The second save is refused with the "changed after you opened it" message.
 - [ ] A user requests an edit; an admin edits the same field directly; approving the request is refused.
 
+**Assistant**
+
+- [ ] Ask "Which projects spent the most?". A status like "Adding up totals…" appears, then an answer whose figures match Voucher Control.
+- [ ] Ask "How many projects are there?". The number matches Voucher Control.
+- [ ] Ask about one project, then "what about [another project]?" in the same chat. The second answer shows only the second project's entries.
+- [ ] Ask for a project's entries, then "tabulate it". A real table appears; **Expand** widens the window.
+- [ ] Ask "delete [a project]" and "how do I add an entry?". The assistant says it can't change anything and gives the right steps for your role, without listing entries.
+- [ ] `docker compose exec ollama ollama ps` shows the model on the GPU.
+- [ ] Stop the `ollama` container and ask again: the window says the assistant is offline.
+
 **Activity Log**
 
 - [ ] Every action above appears. **Record type** filters Entries, Projects and Accounts.
@@ -587,8 +659,10 @@ These were found during the work but are not fixed yet:
 4. **Secrets are hard-coded:** `SECRET_KEY` in `security.py` and the database password in `database.py`/`docker-compose.yml`. Move them to environment variables before deploying.
 5. **CORS allows every origin** (`allow_origins=["*"]`). Restrict it to the real frontend address before deploying.
 6. **Line endings:** files use Windows (CRLF) endings, so git may show whole files as changed. `git config core.autocrlf true` avoids this.
-7. **Chatbot:** `ChatWidget.jsx` still shows a placeholder reply. Connecting it to a local Ollama model through a new FastAPI `/chat` endpoint was planned but hasn't been built yet.
-8. **Single-admin lockout:** an admin can't approve their own password reset. If the only admin forgets their password, reset it from the `Backend` folder with:
+7. **Assistant limits:** it runs `qwen3:4b-instruct-2507-q4_K_M`, a small model. The safety net makes sure the right records are looked up, but the wording can still be off, so test it with a set of questions whose answers you know before relying on it. It answers one question at a time, so simultaneous users wait in turn. On a 4 GB GPU part of the model may run on the CPU, which is slower.
+8. **Single-admin lockout:** an admin can't approve their own password reset. If the only admin forgets their password, reset it on the server, from the `Backend` folder:
    ```powershell
-   python -c "import database, models, security; db = database.SessionLocal(); u = db.query(models.User).filter_by(username='admin').first(); u.hashed_password = security.get_password_hash('admin123'); db.commit()"
+   docker compose exec api python -c "import database, models, security; db = database.SessionLocal(); u = db.query(models.User).filter_by(username='admin').first(); u.hashed_password = security.get_password_hash('admin123'); db.commit()"
    ```
+9. **GPU setting is machine-specific:** the `reservations:` block for the `ollama` service only works on machines with an NVIDIA GPU and its driver. Remove it on other machines, including the client's server if it has no NVIDIA GPU.
+10. **Token-signing key warning:** the backend logs `InsecureKeyLengthWarning` because `SECRET_KEY` is short. It works, but should become a long random value (see item 4); changing it signs everyone out once.

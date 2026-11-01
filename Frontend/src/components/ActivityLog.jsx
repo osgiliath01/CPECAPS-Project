@@ -38,6 +38,7 @@ const ACTIONS = [
   ["admin_reset", "Password reset by admin"],
   ["user_update", "Updated account"],
   ["user_delete", "Deleted account"],
+  ["chat", "Asked the assistant"],
   ["promote_admin", "Made admin"],
 ];
 const ACTION_LABEL = Object.fromEntries(ACTIONS);

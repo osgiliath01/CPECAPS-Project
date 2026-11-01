@@ -25,11 +25,44 @@ services:
     environment:
       # "db" is the database container above; the backend reaches it inside Docker
       DATABASE_URL: postgresql+psycopg://postgres:caic123@db:5432/caic_db
+      # The assistant's model server and model (see the ollama service below and chatbot.py)
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: qwen3:4b-instruct-2507-q4_K_M
+      # This instruct model answers directly; Ollama labels it "thinking" only because of its template
+      OLLAMA_THINK: "false"
     ports:
       - "0.0.0.0:8000:8000"
     depends_on:
       db:
         condition: service_healthy
 
+  # Local AI model server for the chatbot. Private: no published port, so only the
+  # api container can reach it (at http://ollama:11434). Download a model once with:
+  #   docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+  ollama:
+    image: ollama/ollama
+    container_name: caic-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m      # keep the model loaded for 30 minutes after the last question
+      OLLAMA_NUM_PARALLEL: 1      # one answer at a time keeps memory use low
+      # Use less graphics memory, so more of the model fits on a 4 GB GPU
+      OLLAMA_FLASH_ATTENTION: 1   # more memory-efficient attention
+      OLLAMA_KV_CACHE_TYPE: q8_0  # conversation memory at half size, with negligible quality loss
+    volumes:
+      - ollama_models:/root/.ollama   # downloaded models survive restarts and updates
+    deploy:
+      resources:
+        limits:
+          memory: 6g              # so a large answer can't starve the database (4b needs ~5 GB)
+        # Use the NVIDIA GPU (RTX 3050). Needs a current NVIDIA driver and Docker Desktop on WSL 2.
+        # On a computer without an NVIDIA GPU, delete these 5 lines or the container won't start.
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
 volumes:
   postgres_data:
+  ollama_models:
