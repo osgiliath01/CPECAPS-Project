@@ -288,6 +288,19 @@ button { cursor: pointer; }
   display: flex; flex-direction: column; align-items: center; text-align: center;
 }
 .profile-avatar { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; }
+.photo-actions { display: flex; gap: 0.9rem; margin-top: 0.5rem; font-size: 0.85rem; }
+.profile-name { display: flex; align-items: baseline; justify-content: center; gap: 0.5rem; flex-wrap: wrap; }
+.name-edit-btn { font-size: 0.8rem; font-weight: 400; }
+.name-edit { width: 100%; margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.name-edit input { width: 100%; box-sizing: border-box; }
+.name-edit-actions { display: flex; gap: 0.5rem; justify-content: center; }
+.name-status { margin: 0.3rem 0 0.6rem; padding: 0.4rem 0.7rem; border-radius: 0.6rem; font-size: 0.85rem; }
+.name-status.waiting { background: #fff0c2; }
+.name-status.rejected { background: #fdecea; }
+.name-requests { margin-bottom: 1.2rem; }
+.log-badge.act-name_requested { background: #fff0c2; }
+.log-badge.act-name_approved { background: #d7efdc; }
+.log-badge.act-name_rejected { background: #f9d6d6; }
 .profile-name { margin: 1rem 0 0; font-size: 1.3rem; }
 .profile-username { margin: 0.2rem 0 0.8rem; }
 .role-badge { padding: 0.25rem 0.9rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; background: var(--pill); }

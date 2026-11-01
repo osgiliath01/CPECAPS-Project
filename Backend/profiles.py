@@ -1,0 +1,305 @@
+"""The signed-in user's own profile: profile picture and full name.
+
+- Anyone can upload or remove their own picture. Pictures are only served to signed-in users.
+- Staff ask for a name change and an admin approves or rejects it (with an optional note).
+  Admins change their own name directly. Every change is written to the Activity Log."""
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+
+import activity
+import database
+import models
+import security
+
+router = APIRouter(tags=["Profile"])
+
+MAX_AVATAR_BYTES = 1024 * 1024  # the app shrinks pictures to about 30 KB before uploading
+_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+# ---------- Schemas ----------
+
+class NameRequestOut(BaseModel):
+    id: int
+    current_name: str
+    new_name: str
+    status: str
+    reviewed_by: Optional[str]
+    review_note: Optional[str]
+    created_at: datetime
+    reviewed_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProfileOut(BaseModel):
+    id: int
+    username: str
+    name: str
+    is_superuser: bool
+    is_active: bool
+    created_at: datetime
+    avatar_version: Optional[str]          # changes whenever the picture changes; None = no picture
+    name_request: Optional[NameRequestOut]  # the latest name-change request, if any
+
+
+class NameChange(BaseModel):
+    new_name: str = Field(..., min_length=3, max_length=50)
+
+
+class NameChangeResult(BaseModel):
+    applied: bool
+    detail: str
+
+
+class PendingNameRequest(BaseModel):
+    id: int
+    user_id: int
+    username: str
+    current_name: str
+    new_name: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReviewNote(BaseModel):
+    note: Optional[str] = Field(None, max_length=500)
+
+
+# ---------- Helpers ----------
+
+def _image_type(data: bytes) -> Optional[str]:
+    """The real type from the file's first bytes (the name or browser's label can lie)."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _clean_name(value: str) -> str:
+    return " ".join((value or "").split())
+
+
+def _latest_name_request(db: Session, user_id: int) -> Optional[models.NameChangeRequest]:
+    return (
+        db.query(models.NameChangeRequest)
+        .filter(models.NameChangeRequest.user_id == user_id)
+        .order_by(models.NameChangeRequest.created_at.desc(), models.NameChangeRequest.id.desc())
+        .first()
+    )
+
+
+# ---------- Own profile ----------
+
+@router.get("/me/profile", response_model=ProfileOut)
+def my_profile(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """The signed-in user's profile, including their latest name-change request."""
+    changed = (
+        db.query(models.UserAvatar.updated_at)
+        .filter(models.UserAvatar.user_id == current_user.id)
+        .scalar()
+    )
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "name": current_user.name,
+        "is_superuser": current_user.is_superuser,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at,
+        "avatar_version": changed.isoformat() if changed else None,
+        "name_request": _latest_name_request(db, current_user.id),
+    }
+
+
+@router.put("/me/avatar", status_code=status.HTTP_204_NO_CONTENT)
+def upload_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Sets the signed-in user's profile picture (JPEG, PNG or WebP, up to 1 MB)."""
+    data = file.file.read(MAX_AVATAR_BYTES + 1)
+    if len(data) > MAX_AVATAR_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "The picture is too large (1 MB at most).")
+    kind = _image_type(data)
+    if kind not in _IMAGE_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Use a JPEG, PNG or WebP picture.")
+
+    row = db.get(models.UserAvatar, current_user.id)
+    if row is None:
+        row = models.UserAvatar(user_id=current_user.id)
+        db.add(row)
+    row.content, row.content_type = data, kind
+    row.updated_at = datetime.now(timezone.utc)
+    activity.log(db, current_user.username, "avatar_change", f"'{current_user.username}' changed their profile picture",
+                 "user", current_user.id)
+    db.commit()
+    return None
+
+
+@router.delete("/me/avatar", status_code=status.HTTP_204_NO_CONTENT)
+def remove_avatar(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    row = db.get(models.UserAvatar, current_user.id)
+    if row is not None:
+        db.delete(row)
+        activity.log(db, current_user.username, "avatar_change",
+                     f"'{current_user.username}' removed their profile picture", "user", current_user.id)
+        db.commit()
+    return None
+
+
+@router.get("/avatars/{user_id}")
+def get_avatar(
+    user_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """A user's profile picture. Signed-in users only; the app asks with ?v=<avatar_version>,
+    so the browser may keep it for a day."""
+    row = db.get(models.UserAvatar, user_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No picture")
+    return Response(row.content, media_type=row.content_type,
+                    headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.post("/me/name", response_model=NameChangeResult)
+def change_my_name(
+    payload: NameChange,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Admins: changes their name right away. Staff: sends a request for an admin to approve
+    (replacing any request of theirs still waiting)."""
+    new_name = _clean_name(payload.new_name)
+    if len(new_name) < 3:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The name must be at least 3 characters.")
+    if new_name == current_user.name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That's already your name.")
+
+    if current_user.is_superuser:
+        old = current_user.name
+        current_user.name = new_name
+        activity.log(db, current_user.username, "name_change", f"Changed own name from '{old}' to '{new_name}'",
+                     "user", current_user.id, {"name": [old, new_name]})
+        db.commit()
+        return {"applied": True, "detail": "Name changed."}
+
+    pending = (
+        db.query(models.NameChangeRequest)
+        .filter_by(user_id=current_user.id, status="pending")
+        .with_for_update()
+        .first()
+    )
+    if pending:
+        pending.new_name = new_name
+        pending.created_at = datetime.now(timezone.utc)
+    else:
+        db.add(models.NameChangeRequest(user_id=current_user.id, username=current_user.username,
+                                        current_name=current_user.name, new_name=new_name))
+    activity.log(db, current_user.username, "name_requested",
+                 f"'{current_user.username}' asked to change their name from '{current_user.name}' to '{new_name}'",
+                 "user", current_user.id, {"name": [current_user.name, new_name]})
+    db.commit()
+    return {"applied": False, "detail": "Request sent. Your name changes once an admin approves it."}
+
+
+@router.delete("/me/name", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_my_name_request(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Withdraws the signed-in user's name-change request that's still waiting."""
+    pending = db.query(models.NameChangeRequest).filter_by(user_id=current_user.id, status="pending").first()
+    if pending:
+        db.delete(pending)
+        activity.log(db, current_user.username, "name_request_cancelled",
+                     f"'{current_user.username}' withdrew their name-change request", "user", current_user.id)
+        db.commit()
+    return None
+
+
+# ---------- Review (admins only) ----------
+
+@router.get("/name-requests", response_model=List[PendingNameRequest])
+def list_name_requests(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_superuser),
+):
+    """Admins only: name changes waiting for approval, oldest first."""
+    return (
+        db.query(models.NameChangeRequest)
+        .filter_by(status="pending")
+        .order_by(models.NameChangeRequest.created_at)
+        .all()
+    )
+
+
+def _get_pending(db: Session, request_id: int, admin: models.User) -> models.NameChangeRequest:
+    req = db.get(models.NameChangeRequest, request_id, with_for_update=True)  # two admins can't both decide
+    if not req:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found")
+    if req.status != "pending":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"This request was already {req.status}.")
+    if req.user_id == admin.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't review your own request.")
+    return req
+
+
+def _decide(req: models.NameChangeRequest, admin: models.User, new_status: str, payload: Optional[ReviewNote]):
+    req.status = new_status
+    req.reviewed_by = admin.username
+    req.reviewed_at = datetime.now(timezone.utc)
+    note = (payload.note or "").strip() if payload else ""
+    req.review_note = note or None
+
+
+@router.post("/name-requests/{request_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
+def approve_name_request(
+    request_id: int,
+    payload: Optional[ReviewNote] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_superuser),
+):
+    req = _get_pending(db, request_id, current_user)
+    user = db.get(models.User, req.user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That account no longer exists.")
+    old = user.name
+    user.name = req.new_name
+    _decide(req, current_user, "approved", payload)
+    activity.log(db, current_user.username, "name_approved",
+                 f"Approved name change for '{user.username}': '{old}' to '{req.new_name}'",
+                 "user", user.id, {"name": [old, req.new_name], "note": req.review_note})
+    db.commit()
+    return None
+
+
+@router.post("/name-requests/{request_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+def reject_name_request(
+    request_id: int,
+    payload: Optional[ReviewNote] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_superuser),
+):
+    req = _get_pending(db, request_id, current_user)
+    _decide(req, current_user, "rejected", payload)
+    activity.log(db, current_user.username, "name_rejected",
+                 f"Rejected name change for '{req.username}' to '{req.new_name}'",
+                 "user", req.user_id, {"note": req.review_note})
+    db.commit()
+    return None

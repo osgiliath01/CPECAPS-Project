@@ -490,6 +490,17 @@ The script works in `.deploy\live` and `.deploy\preview` (git worktrees, ignored
 
 ---
 
+### 4.16 Profile picture and name (User Panel)
+
+Everyone's **User Panel** (menu at the top right) shows their profile card:
+
+- **Profile picture:** **Add photo / Change photo** opens a file picker (JPEG, PNG or WebP). The app crops the middle square and shrinks it to 256×256 (about 30 KB) before uploading, so phone photos work too. **Remove** goes back to the default picture. It shows on the profile card and the menu button. Pictures are stored in the database (`user_avatars`) and only served to signed-in users (`GET /avatars/{user_id}`).
+- **Name:** **Edit** next to the name.
+  - **Staff** send a request (**Request change**). The card shows *Waiting for approval: <new name>* with **Withdraw**; sending another request replaces the waiting one. If an admin rejects it, the card says so (with the admin's note) for 14 days.
+  - **Admins** change their own name straight away (logged as *Changed name*).
+- **Admins review** name changes in **User Panel > Manage users**, above the user list, with an optional note. They're counted in the red badges (menu button, User Panel, Manage users tab). An admin can't review their own request.
+- When a name change is approved, the person's screens update live (their own account events are now sent to them, not only to admins). Entries show the new name through the full-name lookup (4.9 / *created by*).
+
 ## 5. Database changes
 
 All changes are applied automatically when the backend starts:
@@ -674,6 +685,7 @@ All changes are applied automatically when the backend starts:
 | `deletion_requests.py` | **new** | Archive and edit requests, My requests, approve/reject with notes |
 | `password_resets.py` | **new** | Forgot-password flow and temporary password generator |
 | `users_admin.py` | **new** | Manage users routes with self and last-admin protection |
+| `profiles.py` | **new** | Own profile: picture upload/remove, name-change requests and their review |
 | `imports.py` | **new** | CSV import with preview and per-row validation |
 | `live.py` | **new** | Live updates: Activity Log watcher and `/live` stream |
 | `chatbot.py` | **new** | Assistant: `/chat` route, read-only tools, app guide, safety net, action-request handling, thinking-model handling, Ollama connection |

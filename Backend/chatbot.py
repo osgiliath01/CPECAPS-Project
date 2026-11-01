@@ -374,6 +374,7 @@ def tool_pending_requests(db: Session, args: dict, user: dict) -> dict:
         "pending_edit_requests": sum(r.request_type == "edit" for r in reqs),
         "pending_password_resets": resets,
         "new_accounts_waiting_for_approval": accounts,
+        "name_changes_waiting_for_approval": db.query(models.NameChangeRequest).filter_by(status="pending").count(),
         "requests": [
             {"type": r.request_type, "project": r.project_title, "cv_no": r.cv_no, "payee": r.payee,
              "amount": _money(r.amount), "requested_by": r.requested_by, "reason": r.reason or None,
@@ -436,7 +437,7 @@ TOOLS = {
     )),
     "pending_requests": (tool_pending_requests, True, "Checking pending requests…", _tool(
         "pending_requests",
-        "Pending archive and edit requests, password resets and new accounts waiting for an admin. Admins only.",
+        "Pending archive and edit requests, password resets, new accounts and name changes waiting for an admin. Admins only.",
         {},
     )),
 }
@@ -566,24 +567,30 @@ _GUIDE_COMMON = (
     "How the app works (use this when asked how to do something; you can't do these actions yourself):\n"
     "- Add an entry: anyone can. In Voucher Control click View on the project, then '+ Add new record'.\n"
     "- New project: anyone can, with '+ Create new project' in Voucher Control.\n"
-    "- Change your password: the menu at the top right (your name, or 'Admin') > Change password. Forgot it: 'Forgot password?' on the "
+    "- The User Panel: the menu at the top right (your picture and name, or 'Admin') > User Panel.\n"
+    "- Change your password: User Panel > Change password. Forgot it: 'Forgot password?' on the "
     "sign-in page; an admin approves and gives a temporary password.\n"
+    "- Profile picture: User Panel > Add photo / Change photo (or Remove).\n"
     "- New accounts made with 'Create account' on the sign-in page can sign in only after an admin approves them.\n"
 )
 _GUIDE_USER = (
     "- Edit an entry: click 'Request edit' on it; an admin approves or rejects the change.\n"
     "- Remove an entry: click 'Request archive' and give a reason; an admin decides.\n"
-    "- See what happened to your requests: the menu at the top right > My requests.\n"
+    "- See what happened to your requests: User Panel (My requests).\n"
+    "- Change your full name: User Panel > Edit next to your name > Request change; it changes once an admin "
+    "approves it.\n"
     "- Only admins can import files, archive projects or restore archived items.\n"
 )
 _GUIDE_ADMIN = (
     "- Edit or archive an entry directly with its Edit / Archive buttons; archive a whole project with Archive "
     "in Voucher Control. Archived items can be restored for 30 days (Activity Log > Archived), then they're "
     "deleted permanently.\n"
-    "- The Activity Log is in the menu at the top right (your name, or 'Admin').\n"
+    "- The Activity Log: User Panel > Activity Log tab.\n"
+    "- Change your own name: User Panel > Edit next to your name > Save (applies right away for admins).\n"
     "- Review staff requests and password resets: Activity Log > Requests / Password resets.\n"
     "- Import entries from a CSV: 'Import File' in Voucher Control.\n"
-    "- Manage accounts (approve new accounts, roles, deactivate, reset password, delete): the menu at the top right (your name, or 'Admin') > Manage users.\n"
+    "- Manage accounts (approve new accounts and name changes, roles, deactivate, reset password, delete): "
+    "User Panel > Manage users tab.\n"
 )
 
 
@@ -741,7 +748,7 @@ def _guard_note(question: str, user: dict, previous: str = "") -> Optional[str]:
     if not user["is_admin"] and (_ADMIN_ONLY.search(q) or (_WHO_CHANGED.search(q) and not about_entry)):
         return ("The user is asking for the activity log or other people's requests. Only admins can see those. "
                 "Say so in one sentence, then add that they can see their own requests and whether they were "
-                "approved under My requests in the menu at the top right. Don't list entries or amounts.")
+                "approved in the User Panel (menu at the top right). Don't list entries or amounts.")
     if _OFF_TOPIC.search(q) and not _looks_like_data(q):
         return ("The user's request isn't about CAIC's vouchers and disbursements. Say in one sentence that you "
                 "can only help with those, and give one example question. Don't do the request.")

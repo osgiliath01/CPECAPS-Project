@@ -12,7 +12,7 @@ const STATUS_FILTERS = [
   ["rejected", "Rejected"],
 ];
 
-export function MyRequestsContent({ api, version }) {
+export function MyRequestsContent({ api, version, onSeen }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("all");

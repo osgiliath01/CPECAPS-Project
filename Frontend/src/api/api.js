@@ -147,6 +147,29 @@ export function createApi(token, onUnauthorized) {
     // User management (admins only). resetUserPassword returns the one-time temporary password.
     listUsers: () => call("/users"),
     listPendingUsers: () => call("/users/pending"),
+
+    // Own profile: picture and name. Staff name changes wait for an admin.
+    getProfile: () => call("/me/profile"),
+    uploadAvatar: (blob) => {
+      const form = new FormData();
+      form.append("file", blob, "avatar.jpg");
+      return call("/me/avatar", { method: "PUT", upload: form });
+    },
+    removeAvatar: () => call("/me/avatar", { method: "DELETE" }),
+    // Pictures need the sign-in token, so they're fetched here and shown from a local copy
+    avatarBlob: async (userId, version) => {
+      const res = await fetch(`${API_URL}/avatars/${userId}?v=${encodeURIComponent(version || "")}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.ok ? res.blob() : null;
+    },
+    changeName: (newName) => call("/me/name", { method: "POST", body: { new_name: newName } }),
+    cancelNameRequest: () => call("/me/name", { method: "DELETE" }),
+    listNameRequests: () => call("/name-requests"),
+    approveNameRequest: (id, note) =>
+      call(`/name-requests/${id}/approve`, { method: "POST", body: note ? { note } : undefined }),
+    rejectNameRequest: (id, note) =>
+      call(`/name-requests/${id}/reject`, { method: "POST", body: note ? { note } : undefined }),
     approveUser: (id) => call(`/users/${id}/approve`, { method: "POST" }),
     rejectUser: (id) => call(`/users/${id}/reject`, { method: "POST" }),
     updateUser: (id, body) => call(`/users/${id}`, { method: "PATCH", body }),

@@ -1,18 +1,36 @@
-import { useState } from "react";
-import avatar from "../assets/default_user.jpg";
+import { useRef, useState } from "react";
 import { fmtStamp } from "../utils/format";
+import Avatar, { squarePhoto } from "./Avatar";
+import NameRequests from "./NameRequests";
 import { ActivityLogContent } from "./ActivityLog";
 import { MyRequestsContent } from "./MyRequests";
 import { UsersContent } from "./UsersDialog";
 import { CountBadge } from "./AdminMenu";
 
-export default function UserPanel({ api, user, version, pending, onPassword, onLogout, onChanged }) {
+export default function UserPanel({
+  api,
+  user,
+  version,
+  pending,
+  profile,
+  onProfileChanged,
+  onSeen,
+  onPassword,
+  onLogout,
+  onChanged,
+}) {
   const isAdmin = !!user.is_superuser;
+  const waitingAccounts = (pending?.accounts || 0) + (pending?.names || 0);
+  // After changing the picture or name: reload the profile and say what happened
+  const profileChanged = async (msg) => {
+    await onProfileChanged?.();
+    if (msg) onChanged?.(msg);
+  };
 
   // Admins: open on whatever needs them. Activity Log if requests/resets are waiting,
   // otherwise Manage users if an account is waiting, otherwise Activity Log.
   const [section, setSection] = useState(() =>
-    !(pending?.requests || pending?.resets) && pending?.accounts ? "users" : "activity"
+    !(pending?.requests || pending?.resets) && (pending?.accounts || pending?.names) ? "users" : "activity"
   );
 
   const title = !isAdmin ? "My requests" : section === "users" ? "Manage users" : "Activity Log";
@@ -26,8 +44,9 @@ export default function UserPanel({ api, user, version, pending, onPassword, onL
       <div className="userpanel">
         {/* Left: who you are. Same for every role. */}
         <aside className="profile-card" aria-label="Account details">
-          <img src={avatar} alt="" className="profile-avatar" />
-          <h2 className="profile-name">{user.name}</h2>
+          <Avatar api={api} userId={profile?.id} version={profile?.avatar_version} className="profile-avatar" />
+          <PhotoControls api={api} profile={profile} onChanged={profileChanged} />
+          <NameEditor api={api} user={user} profile={profile} isAdmin={isAdmin} onChanged={profileChanged} />
           <p className="profile-username muted">@{user.username}</p>
           <span className={`role-badge ${isAdmin ? "admin" : "staff"}`}>
             {isAdmin ? "Administrator" : "Staff"}
@@ -80,7 +99,7 @@ export default function UserPanel({ api, user, version, pending, onPassword, onL
                 onClick={() => setSection("users")}
               >
                 Manage users
-                <CountBadge count={pending?.accounts || 0} label="new accounts waiting for approval" />
+                <CountBadge count={waitingAccounts} label="new accounts and name changes waiting for approval" />
               </button>
             </div>
           )}
@@ -91,15 +110,181 @@ export default function UserPanel({ api, user, version, pending, onPassword, onL
           >
             <h2 className="panel-title">{title}</h2>
             {!isAdmin ? (
-              <MyRequestsContent api={api} version={version} />
+              <MyRequestsContent api={api} version={version} onSeen={onSeen} />
             ) : section === "users" ? (
-              <UsersContent api={api} user={user} version={version} onChanged={onChanged} />
+              <>
+                <NameRequests api={api} version={version} onChanged={onChanged} />
+                <UsersContent api={api} user={user} version={version} onChanged={onChanged} />
+              </>
             ) : (
               <ActivityLogContent api={api} user={user} version={version} pending={pending} onChanged={onChanged} />
             )}
           </section>
         </div>
       </div>
+    </>
+  );
+}
+
+// Add, change or remove your own profile picture
+function PhotoControls({ api, profile, onChanged }) {
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // picking the same file again still works
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.uploadAvatar(await squarePhoto(file));
+      await onChanged("Profile picture updated.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.removeAvatar();
+      await onChanged("Profile picture removed.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!profile || !api.uploadAvatar) return null; // demo mode
+  return (
+    <>
+      <div className="photo-actions">
+        <button type="button" className="link" disabled={busy} onClick={() => inputRef.current?.click()}>
+          {busy ? "Saving…" : profile.avatar_version ? "Change photo" : "Add photo"}
+        </button>
+        {profile.avatar_version && (
+          <button type="button" className="link" disabled={busy} onClick={remove}>
+            Remove
+          </button>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        onChange={pick}
+      />
+      {error && <p className="error small">{error}</p>}
+    </>
+  );
+}
+
+const RECENT_DAYS = 14; // how long a rejected name change stays mentioned
+
+// Your full name. Admins change it directly; staff send a request an admin approves.
+function NameEditor({ api, user, profile, isAdmin, onChanged }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const name = profile?.name || user.name;
+  const req = profile?.name_request;
+  const waiting = req?.status === "pending";
+  const recentlyRejected =
+    req?.status === "rejected" &&
+    req.reviewed_at &&
+    Date.now() - new Date(req.reviewed_at).getTime() < RECENT_DAYS * 86400000;
+
+  async function run(action) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      setEditing(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const save = (e) => {
+    e.preventDefault();
+    run(async () => {
+      const res = await api.changeName(value.trim());
+      await onChanged(res?.detail);
+    });
+  };
+
+  const canEdit = !!profile && !!api.changeName;
+
+  return (
+    <>
+      {editing ? (
+        <form className="name-edit" onSubmit={save}>
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            minLength={3}
+            maxLength={50}
+            autoFocus
+            aria-label="Full name"
+          />
+          <div className="name-edit-actions">
+            <button className="pill sm primary" disabled={busy || value.trim().length < 3 || value.trim() === name}>
+              {isAdmin ? "Save" : "Request change"}
+            </button>
+            <button type="button" className="pill sm" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+          {!isAdmin && <p className="muted small">An admin has to approve your new name.</p>}
+        </form>
+      ) : (
+        <h2 className="profile-name">
+          {name}
+          {canEdit && (
+            <button
+              type="button"
+              className="link small name-edit-btn"
+              onClick={() => {
+                setValue(waiting ? req.new_name : name);
+                setError("");
+                setEditing(true);
+              }}
+            >
+              Edit
+            </button>
+          )}
+        </h2>
+      )}
+
+      {!editing && waiting && (
+        <p className="name-status waiting">
+          Waiting for approval: <strong>{req.new_name}</strong>{" "}
+          <button type="button" className="link small" disabled={busy} onClick={() => run(async () => {
+            await api.cancelNameRequest();
+            await onChanged("Name change request withdrawn.");
+          })}>
+            Withdraw
+          </button>
+        </p>
+      )}
+      {!editing && recentlyRejected && (
+        <p className="name-status rejected">
+          Your change to <strong>{req.new_name}</strong> was not approved
+          {req.review_note ? `: ${req.review_note}` : "."}
+        </p>
+      )}
+      {error && <p className="error small">{error}</p>}
     </>
   );
 }

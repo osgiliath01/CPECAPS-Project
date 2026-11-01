@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AdminMenu from "./AdminMenu";
 import VoucherControl from "./ProjectsTable";
 import SummaryOfExpenses from "./SummaryOfExpenses";
@@ -16,7 +16,22 @@ const FILTERS = [
   { key: "payee", label: "Payee / Particulars" },
 ];
 
-export default function Dashboard({ api, user, onLogout }) {
+export default function Dashboard({ api, user: sessionUser, onLogout }) {
+  // Own profile (picture, current name, name-change request). The name in the sign-in token
+  // can be out of date after an approved change, so the profile's name is used everywhere.
+  const [profile, setProfile] = useState(null);
+  const [profileVersion, setProfileVersion] = useState(0);
+  const user = useMemo(
+    () => (profile ? { ...sessionUser, id: profile.id, name: profile.name } : sessionUser),
+    [sessionUser, profile]
+  );
+  const loadProfile = useCallback(
+    () => (api.getProfile ? api.getProfile().then(setProfile, () => {}) : Promise.resolve()),
+    [api]
+  );
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile, profileVersion]);
   const [projects, setProjects] = useState([]);
   const [creatingProject, setCreatingProject] = useState(false);
   const [entries, setEntries] = useState([]);
@@ -35,8 +50,10 @@ export default function Dashboard({ api, user, onLogout }) {
   const [toast, setToast] = useState("");
   const [liveStatus, setLiveStatus] = useState("connecting");
   const [liveVersion, setLiveVersion] = useState(0); // bumps on every change, so open windows reload
+  const profileIdRef = useRef(null);
+  profileIdRef.current = profile?.id ?? null;
   // Badge counts. Admins: requests and password resets waiting. Staff: answers not yet seen.
-  const [pending, setPending] = useState({ requests: 0, resets: 0, accounts: 0, responses: 0 });
+  const [pending, setPending] = useState({ requests: 0, resets: 0, accounts: 0, names: 0, responses: 0 });
   const reqId = useRef(0);
 
   const loadEntries = useCallback(async () => {
@@ -110,16 +127,19 @@ export default function Dashboard({ api, user, onLogout }) {
           api.listRequests("pending"),
           api.listResetRequests("pending"),
           api.listPendingUsers(),
-        ]).then(([requests, resets, accounts]) => ({
+          api.listNameRequests ? api.listNameRequests() : Promise.resolve([]),
+        ]).then(([requests, resets, accounts, names]) => ({
           requests: requests.length,
           resets: resets.length,
           accounts: accounts.length,
+          names: names.length,
           responses: 0,
         }))
       : api.listMyRequests().then((mine) => ({
           requests: 0,
           resets: 0,
           accounts: 0,
+          names: 0,
           responses: mine.filter((r) => r.status !== "pending" && r.requester_seen === false).length,
         }));
     counts
@@ -152,6 +172,8 @@ export default function Dashboard({ api, user, onLogout }) {
       resync = false;
       if (dataChanged) refreshRef.current();
       setLiveVersion((v) => v + 1);
+      if (resync || events.some((e) => e.entity_type === "user" && e.entity_id === profileIdRef.current))
+        setProfileVersion((v) => v + 1); // e.g. an admin approved this user's name change
       const others = [
         ...new Set(
           events
@@ -318,7 +340,9 @@ export default function Dashboard({ api, user, onLogout }) {
             user={user}
             initial={initial}
             pendingCount={user.is_superuser ? pending.requests + pending.resets : pending.responses}
-            accountsCount={user.is_superuser ? pending.accounts : 0}
+            accountsCount={user.is_superuser ? pending.accounts + pending.names : 0}
+            api={api}
+            profile={profile}
             onMyRequests={() => setPage("user")}
             onHome={goHome}
             onUserPanel={() => setPage("user")}
@@ -338,6 +362,9 @@ export default function Dashboard({ api, user, onLogout }) {
             onLogout={onLogout}
             onChanged={(msg) => { setToast(msg); refresh(); }}
             pending={pending}
+            profile={profile}
+            onProfileChanged={loadProfile}
+            onSeen={() => setPending((p) => ({ ...p, responses: 0 }))}
           />
         ) : (
 

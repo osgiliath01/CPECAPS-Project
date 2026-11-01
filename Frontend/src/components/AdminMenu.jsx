@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import avatar from "../assets/default_user.jpg";
+import Avatar from "./Avatar";
 import { versionLabel } from "../version";
 
 // Small red counter, like a notification badge. Nothing is shown when the count is 0.
@@ -19,6 +19,8 @@ export default function AdminMenu({
   onLogout,
   pendingCount = 0,
   accountsCount = 0,
+  api,
+  profile,
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -45,7 +47,7 @@ export default function AdminMenu({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <img src={avatar} alt="" className="avatar-img" />
+        <Avatar api={api} userId={profile?.id} version={profile?.avatar_version} className="avatar-img" />
         <CountBadge
           count={pendingCount + accountsCount}
           label={user.is_superuser ? "waiting for you" : "new responses"}

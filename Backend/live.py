@@ -142,7 +142,9 @@ async def live_updates(
                 if event:
                     if event.get("resync"):
                         yield _sse({}, "resync")
-                    elif is_admin or event["entity_type"] != "user":
+                    # Account events go to admins, plus the person they're about (e.g. their
+                    # name change was approved), so their screen updates too
+                    elif is_admin or event["entity_type"] != "user" or event.get("entity_id") == user_id:
                         yield _sse(event)
                 if time.monotonic() - last_account_check > ACCOUNT_CHECK_SECONDS:
                     last_account_check = time.monotonic()

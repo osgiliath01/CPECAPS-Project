@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import JSON, Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, text
+from sqlalchemy import JSON, Boolean, Column, Date, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, text
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -155,6 +155,33 @@ class ActivityLog(Base):
     entity_id = Column(Integer, nullable=True)
     summary = Column(String(500), nullable=False)
     details = Column(JSON, nullable=True)                         # before/after values, reasons, etc.
+
+
+class UserAvatar(Base):
+    """A user's profile picture (small square JPEG/PNG/WebP), kept apart from users so the
+    picture isn't loaded every time an account is read."""
+    __tablename__ = "user_avatars"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    content = Column(LargeBinary, nullable=False)
+    content_type = Column(String(30), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class NameChangeRequest(Base):
+    """A staff member asking for their full name to be changed; an admin approves or rejects."""
+    __tablename__ = "name_change_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    username = Column(String(255), nullable=False)
+    current_name = Column(String(255), nullable=False)
+    new_name = Column(String(255), nullable=False)
+    status = Column(String(20), default="pending", nullable=False, index=True)  # pending | approved | rejected
+    reviewed_by = Column(String(255), nullable=True)
+    review_note = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class PasswordResetRequest(Base):
