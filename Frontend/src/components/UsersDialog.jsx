@@ -62,15 +62,22 @@ export default function UsersDialog({ api, user, version, onClose, onChanged }) 
                         <span className={`log-badge ${u.is_superuser ? "st-pending" : ""}`}>{u.is_superuser ? "Admin" : "User"}</span>
                       </td>
                       <td>
-                        <span className={`log-badge ${u.is_active ? "st-approved" : "st-rejected"}`}>
-                          {u.is_active ? "Active" : "Deactivated"}
-                        </span>
+                        {!u.is_approved ? (
+                          <span className="log-badge st-pending">Waiting for approval</span>
+                        ) : (
+                          <span className={`log-badge ${u.is_active ? "st-approved" : "st-rejected"}`}>
+                            {u.is_active ? "Active" : "Deactivated"}
+                          </span>
+                        )}
                         {u.must_change_password && <><br /><span className="small muted">Temporary password</span></>}
                       </td>
                       <td className="nowrap small">{u.last_login ? fmtStamp(u.last_login) : <span className="muted">Never</span>}</td>
                       <td className="actions">
-                        <button className="pill sm" onClick={() => setSelectedId(u.id === selectedId ? null : u.id)}>
-                          {u.id === selectedId ? "Close" : "Manage"}
+                        <button
+                          className={`pill sm ${!u.is_approved && u.id !== selectedId ? "primary" : ""}`}
+                          onClick={() => setSelectedId(u.id === selectedId ? null : u.id)}
+                        >
+                          {u.id === selectedId ? "Close" : u.is_approved ? "Manage" : "Review"}
                         </button>
                       </td>
                     </tr>
@@ -81,7 +88,19 @@ export default function UsersDialog({ api, user, version, onClose, onChanged }) 
           )
         )}
 
-        {selected && (
+        {selected && !selected.is_approved && (
+          <ApprovalPanel
+            key={selected.id}
+            api={api}
+            target={selected}
+            onDone={async (msg) => {
+              setSelectedId(null);
+              await reload();
+              onChanged?.(msg);
+            }}
+          />
+        )}
+        {selected && selected.is_approved && (
           <UserPanel
             key={selected.id}
             api={api}
@@ -99,6 +118,53 @@ export default function UsersDialog({ api, user, version, onClose, onChanged }) 
         <button type="button" className="pill" onClick={onClose}>Close</button>
       </div>
     </dialog>
+  );
+}
+
+// A new account made through Create account: let it in, or remove it (which frees the username)
+function ApprovalPanel({ api, target, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function decide(action, message) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      await onDone(message);
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="user-panel" aria-label={`Review ${target.name}`}>
+      <h3 className="log-section">
+        {target.name} <span className="muted small">@{target.username}</span>
+      </h3>
+      <p className="muted small">
+        {target.name} created this account on {fmtStamp(target.created_at)}. It can't sign in until it's approved. Approve it only if you
+        know who this is. Rejecting removes the account, so the username can be used again.
+      </p>
+      {error && <p className="error">{error}</p>}
+      <div className="user-actions">
+        <button
+          className="pill sm primary"
+          disabled={busy}
+          onClick={() => decide(() => api.approveUser(target.id), `${target.username} can now sign in.`)}
+        >
+          Approve
+        </button>
+        <button
+          className="pill sm danger"
+          disabled={busy}
+          onClick={() => decide(() => api.rejectUser(target.id), `New account ${target.username} was rejected.`)}
+        >
+          Reject
+        </button>
+      </div>
+    </section>
   );
 }
 

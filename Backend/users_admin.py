@@ -24,8 +24,16 @@ class ManagedUser(BaseModel):
     is_active: bool
     is_superuser: bool
     must_change_password: bool
+    is_approved: bool
     created_at: datetime
     last_login: Optional[datetime]
+
+
+class PendingAccount(BaseModel):
+    id: int
+    name: str
+    username: str
+    created_at: datetime
 
 
 class UserUpdate(BaseModel):
@@ -74,7 +82,8 @@ def list_users(
         .group_by(models.ActivityLog.actor)
         .all()
     )
-    users = db.query(models.User).order_by(models.User.name).all()
+    # Accounts waiting for approval first, then everyone by name
+    users = db.query(models.User).order_by(models.User.is_approved, models.User.name).all()
     return [
         {
             "id": u.id,
@@ -83,11 +92,67 @@ def list_users(
             "is_active": u.is_active,
             "is_superuser": u.is_superuser,
             "must_change_password": u.must_change_password,
+            "is_approved": u.is_approved,
             "created_at": u.created_at,
             "last_login": last_logins.get(u.username),
         }
         for u in users
     ]
+
+
+@router.get("/pending", response_model=List[PendingAccount])
+def list_pending_accounts(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_superuser),
+):
+    """Admins only: accounts made through Create account that are waiting for approval."""
+    return (
+        db.query(models.User)
+        .filter(models.User.is_approved.is_(False))
+        .order_by(models.User.created_at)
+        .all()
+    )
+
+
+def _get_pending_account(db: Session, user_id: int) -> models.User:
+    user = db.get(models.User, user_id, with_for_update=True)  # two admins can't both decide
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if user.is_approved:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This account is already approved.")
+    return user
+
+
+@router.post("/{user_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
+def approve_account(
+    user_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_superuser),
+):
+    """Admins only: lets a newly registered account sign in."""
+    user = _get_pending_account(db, user_id)
+    user.is_approved = True
+    activity.log(db, current_user.username, "account_approved",
+                 f"Approved new account '{user.username}' ({user.name})", "user", user.id)
+    db.commit()
+    return None
+
+
+@router.post("/{user_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+def reject_account(
+    user_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_superuser),
+):
+    """Admins only: removes a newly registered account that was never approved, which also
+    frees its username."""
+    user = _get_pending_account(db, user_id)
+    snapshot = {"name": user.name, "username": user.username}
+    db.delete(user)
+    activity.log(db, current_user.username, "account_rejected",
+                 f"Rejected new account '{snapshot['username']}' ({snapshot['name']})", "user", user_id, snapshot)
+    db.commit()
+    return None
 
 
 @router.patch("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

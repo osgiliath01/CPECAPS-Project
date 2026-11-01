@@ -341,7 +341,8 @@ button { cursor: pointer; }
 .log-badge.act-project_archive, .log-badge.act-purge { background: #f9d6d6; }
 .log-badge.act-project_restore, .log-badge.act-reset_approved { background: #d7efdc; }
 .log-badge.act-reset_requested { background: #fff0c2; }
-.log-badge.act-reset_rejected { background: #f9d6d6; }
+.log-badge.act-reset_rejected, .log-badge.act-account_rejected { background: #f9d6d6; }
+.log-badge.act-account_approved { background: #d7efdc; }
 .log-badge.act-admin_reset, .log-badge.act-user_update { background: #fff0c2; }
 .log-badge.act-user_delete { background: #f9d6d6; }
 .review-table tr.row-selected td { background: #fff8e1; }

@@ -332,10 +332,12 @@ def tool_pending_requests(db: Session, args: dict, user: dict) -> dict:
         .order_by(models.DeletionRequest.created_at.desc()).all()
     )
     resets = db.query(models.PasswordResetRequest).filter_by(status="pending").count()
+    accounts = db.query(models.User).filter(models.User.is_approved.is_(False)).count()
     return {
         "pending_archive_requests": sum(r.request_type == "archive" for r in reqs),
         "pending_edit_requests": sum(r.request_type == "edit" for r in reqs),
         "pending_password_resets": resets,
+        "new_accounts_waiting_for_approval": accounts,
         "requests": [
             {"type": r.request_type, "project": r.project_title, "cv_no": r.cv_no, "payee": r.payee,
              "amount": _money(r.amount), "requested_by": r.requested_by, "reason": r.reason or None,
@@ -398,7 +400,7 @@ TOOLS = {
     )),
     "pending_requests": (tool_pending_requests, True, "Checking pending requests…", _tool(
         "pending_requests",
-        "Pending archive and edit requests and password resets waiting for an admin. Admins only.",
+        "Pending archive and edit requests, password resets and new accounts waiting for an admin. Admins only.",
         {},
     )),
 }
@@ -530,6 +532,7 @@ _GUIDE_COMMON = (
     "- New project: anyone can, with '+ Create new project' in Voucher Control.\n"
     "- Change your password: the menu at the top right (your name, or 'Admin') > Change password. Forgot it: 'Forgot password?' on the "
     "sign-in page; an admin approves and gives a temporary password.\n"
+    "- New accounts made with 'Create account' on the sign-in page can sign in only after an admin approves them.\n"
 )
 _GUIDE_USER = (
     "- Edit an entry: click 'Request edit' on it; an admin approves or rejects the change.\n"
@@ -544,7 +547,7 @@ _GUIDE_ADMIN = (
     "- The Activity Log is in the menu at the top right (your name, or 'Admin').\n"
     "- Review staff requests and password resets: Activity Log > Requests / Password resets.\n"
     "- Import entries from a CSV: 'Import File' in Voucher Control.\n"
-    "- Manage accounts (roles, deactivate, reset password, delete): the menu at the top right (your name, or 'Admin') > Manage users.\n"
+    "- Manage accounts (approve new accounts, roles, deactivate, reset password, delete): the menu at the top right (your name, or 'Admin') > Manage users.\n"
 )
 
 

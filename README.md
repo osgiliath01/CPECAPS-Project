@@ -363,6 +363,13 @@ Accounts have no email address, so resets are approved by an admin:
 
 Admins open **Manage users** from the user menu (top right).
 
+**New accounts need an admin's approval.** An account made with **Create account** on the sign-in page starts as **Waiting for approval**: the person sees "Account created. An admin has to approve it before you can sign in.", and signing in says the account is waiting until it's approved (only after a correct password, so it doesn't reveal which usernames exist). Admins get a red badge on their avatar and on **Manage users**; waiting accounts are listed first with a **Review** button:
+
+- **Approve** lets the account sign in (logged as *Account approved*).
+- **Reject** removes the account, so the username can be used again (logged as *Account rejected*).
+
+Accounts that existed before this change stay approved. The assistant's pending-requests answer for admins includes waiting accounts too.
+
 - **The list:** name, username, role, status (Active / Deactivated, plus "Temporary password" when relevant) and **last sign-in** (taken from the Activity Log). Searchable.
 - **Manage** opens these controls for one account:
   - **Save name**

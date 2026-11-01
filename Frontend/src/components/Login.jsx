@@ -9,6 +9,7 @@ export default function Login({ onLogin, onRegister, onResetRequest }) {
   const [mode, setMode] = useState("login"); // "login" | "register" | "reset"
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState(""); // e.g. "account created, waiting for approval"
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState("");
   const isRegister = mode === "register";
@@ -21,6 +22,7 @@ export default function Login({ onLogin, onRegister, onResetRequest }) {
     setForm((f) => ({ ...EMPTY, username: next === "register" ? "" : f.username }));
     setError("");
     setResetSent("");
+    setNotice("");
   }
 
   async function submit(e) {
@@ -43,8 +45,12 @@ export default function Login({ onLogin, onRegister, onResetRequest }) {
         const res = await onResetRequest(username, form.message.trim());
         setResetSent(res?.detail || "Request sent. An admin will give you a temporary password.");
         setBusy(false);
-      } else if (isRegister) await onRegister({ name, username, password: form.password });
-      else await onLogin(username, form.password);
+      } else if (isRegister) {
+        await onRegister({ name, username, password: form.password });
+        goTo("login"); // keeps the username filled in
+        setNotice("Account created. An admin has to approve it before you can sign in.");
+        setBusy(false);
+      } else await onLogin(username, form.password);
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -78,6 +84,9 @@ export default function Login({ onLogin, onRegister, onResetRequest }) {
             </>
           ) : (
             <>
+              {notice && mode === "login" && (
+                <p role="status" className="reset-sent">{notice}</p>
+              )}
               {isReset && (
                 <p className="muted small">
                   Enter your username. An admin will review your request and give you a temporary password.

@@ -16,13 +16,15 @@ def get_user_by_username(db: Session, username: str) -> Optional[models.User]:
     return db.query(models.User).filter(models.User.username == username).first()
 
 
-def create_user(db: Session, user_in: schemas.UserCreate) -> models.User:
-    """Hashes the password and creates a new user in the database."""
+def create_user(db: Session, user_in: schemas.UserCreate, approved: bool = False) -> models.User:
+    """Hashes the password and creates a new user. Self-registered accounts start unapproved:
+    they can't sign in until an admin approves them."""
     hashed_pw = security.get_password_hash(user_in.password)
     db_user = models.User(
         name=user_in.name,
         username=user_in.username,
         hashed_password=hashed_pw,
+        is_approved=approved,
     )
     db.add(db_user)
     db.commit()

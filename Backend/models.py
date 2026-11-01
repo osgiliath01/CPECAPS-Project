@@ -81,6 +81,9 @@ class User(Base):
     is_superuser = Column(Boolean, default=False, nullable=False)
     # Set after an admin-approved reset: the user must pick a new password at next sign-in
     must_change_password = Column(Boolean, default=False, server_default=text("false"), nullable=False)
+    # Accounts made through Create account start unapproved and can't sign in until an admin
+    # approves them. Accounts made any other way (the first admin) are approved.
+    is_approved = Column(Boolean, default=True, server_default=text("true"), nullable=False, index=True)
 
     # Audit fields
     created_at = Column(

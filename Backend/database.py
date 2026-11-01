@@ -98,6 +98,9 @@ def ensure_schema():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE",
         # Existing requests count as already seen; new answers start unseen
         "ALTER TABLE deletion_requests ADD COLUMN IF NOT EXISTS requester_seen BOOLEAN NOT NULL DEFAULT TRUE",
+        # Accounts that already exist stay approved
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT TRUE",
+        "CREATE INDEX IF NOT EXISTS ix_users_is_approved ON users (is_approved)",
         "ALTER TABLE deletion_requests ALTER COLUMN requester_seen SET DEFAULT FALSE",
     ]
     with engine.begin() as conn:

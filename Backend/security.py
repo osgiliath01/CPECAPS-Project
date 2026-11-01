@@ -125,7 +125,7 @@ def get_current_user_allow_temporary(
     )
     if user is None:
         raise credentials_exception
-    if not user.is_active:
+    if not user.is_active or not user.is_approved:
         # 401 so the app signs a deactivated user out straight away
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -172,7 +172,7 @@ def user_from_token(token: str) -> models.User:
         user = db.query(models.User).filter(models.User.username == username).first()
         if user is None:
             raise credentials_exception
-        if not user.is_active:
+        if not user.is_active or not user.is_approved:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="This account has been deactivated.",

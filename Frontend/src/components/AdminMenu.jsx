@@ -21,6 +21,7 @@ export default function AdminMenu({
   onMyRequests,
   onLogout,
   pendingCount = 0,
+  accountsCount = 0,
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -49,8 +50,8 @@ export default function AdminMenu({
       >
         <img src={avatar} alt="" className="avatar-img" />
         <CountBadge
-          count={pendingCount}
-          label={user.is_superuser ? "pending requests" : "new responses"}
+          count={pendingCount + accountsCount}
+          label={user.is_superuser ? "waiting for you" : "new responses"}
           className="on-avatar"
         />
         <span className="adminname">{user.is_superuser ? "Admin" : user.name}</span>
@@ -106,6 +107,7 @@ export default function AdminMenu({
               }}
             >
               Manage users
+              <CountBadge count={accountsCount} label="new accounts waiting for approval" />
             </button>
           )}
           <button role="menuitem" onClick={onLogout}>

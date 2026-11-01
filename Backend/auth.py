@@ -89,7 +89,7 @@ app.add_middleware(
 def register_user(
     payload: schemas.UserCreate, db: Session = Depends(database.get_db)
 ):
-    """Registers a new user account."""
+    """Registers a new user account. It can't sign in until an admin approves it."""
     existing_user = crud.get_user_by_username(db, username=payload.username)
     if existing_user:
         raise HTTPException(
@@ -97,8 +97,8 @@ def register_user(
             detail="Username is already taken",
         )
     user = crud.create_user(db=db, user_in=payload)
-    activity.log(db, user.username, "register", f"Registered account '{user.username}' ({user.name})",
-                 "user", user.id)
+    activity.log(db, user.username, "register",
+                 f"Registered account '{user.username}' ({user.name}); waiting for approval", "user", user.id)
     db.commit()
     return user
 
@@ -143,6 +143,13 @@ def login_for_access_token(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user account",
+        )
+
+    if not user.is_approved:
+        # Only said after a correct password, so it doesn't reveal which usernames exist
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is waiting for an admin's approval. Try again once it's approved.",
         )
 
     access_token = security.create_access_token(

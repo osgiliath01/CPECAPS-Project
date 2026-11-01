@@ -100,7 +100,7 @@ def _still_allowed(user_id: int) -> bool:
     db = database.SessionLocal()
     try:
         u = db.get(models.User, user_id)
-        return bool(u and u.is_active and not u.must_change_password)
+        return bool(u and u.is_active and u.is_approved and not u.must_change_password)
     finally:
         db.close()
 

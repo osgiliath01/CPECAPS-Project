@@ -30,6 +30,8 @@ const ACTIONS = [
   ["purge", "Deleted permanently"],
   ["project_delete", "Deleted project"],
   ["register", "Registered"],
+  ["account_approved", "Account approved"],
+  ["account_rejected", "Account rejected"],
   ["login", "Signed in"],
   ["login_failed", "Failed sign-in"],
   ["password_change", "Changed password"],

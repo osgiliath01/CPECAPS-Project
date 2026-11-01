@@ -107,6 +107,7 @@ class UserResponse(BaseModel):
     username: str
     is_active: bool
     is_superuser: bool
+    is_approved: bool = True
     created_at: datetime
     updated_at: datetime
 

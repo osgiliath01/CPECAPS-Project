@@ -36,13 +36,9 @@ export default function App() {
     setToken(res.access_token);
   }
 
+  // New accounts wait for an admin's approval, so there's no automatic sign-in
   async function handleRegister(form) {
     await createApi(null, null).register(form);
-    try {
-      await handleLogin(form.username, form.password);
-    } catch (e) {
-      throw new Error(`Account created, but automatic sign-in failed: ${e.message}`);
-    }
   }
 
   let screen;

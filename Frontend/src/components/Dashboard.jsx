@@ -38,7 +38,7 @@ export default function Dashboard({ api, user, onLogout }) {
   const [liveStatus, setLiveStatus] = useState("connecting");
   const [liveVersion, setLiveVersion] = useState(0); // bumps on every change, so open windows reload
   // Badge counts. Admins: requests and password resets waiting. Staff: answers not yet seen.
-  const [pending, setPending] = useState({ requests: 0, resets: 0, responses: 0 });
+  const [pending, setPending] = useState({ requests: 0, resets: 0, accounts: 0, responses: 0 });
   const reqId = useRef(0);
 
   const loadEntries = useCallback(async () => {
@@ -108,12 +108,20 @@ export default function Dashboard({ api, user, onLogout }) {
     if (!api.listRequests) return; // demo mode
     let cancelled = false;
     const counts = user.is_superuser
-      ? Promise.all([api.listRequests("pending"), api.listResetRequests("pending")]).then(
-          ([requests, resets]) => ({ requests: requests.length, resets: resets.length, responses: 0 })
-        )
+      ? Promise.all([
+          api.listRequests("pending"),
+          api.listResetRequests("pending"),
+          api.listPendingUsers(),
+        ]).then(([requests, resets, accounts]) => ({
+          requests: requests.length,
+          resets: resets.length,
+          accounts: accounts.length,
+          responses: 0,
+        }))
       : api.listMyRequests().then((mine) => ({
           requests: 0,
           resets: 0,
+          accounts: 0,
           responses: mine.filter((r) => r.status !== "pending" && r.requester_seen === false).length,
         }));
     counts
@@ -305,6 +313,7 @@ export default function Dashboard({ api, user, onLogout }) {
             initial={initial}
             onActivity={() => setReviewOpen(true)}
             pendingCount={user.is_superuser ? pending.requests + pending.resets : pending.responses}
+            accountsCount={user.is_superuser ? pending.accounts : 0}
             onMyRequests={() => setMyRequestsOpen(true)}
             onPassword={() => setPwOpen(true)}
             onUsers={() => setUsersOpen(true)}

@@ -90,7 +90,7 @@ def request_password_reset(payload: ResetRequestCreate, db: Session = Depends(da
     message = (payload.message or "").strip() or None
     user = db.query(models.User).filter(models.User.username == username).first()
 
-    if user and user.is_active:
+    if user and user.is_active and user.is_approved:
         pending = (
             db.query(models.PasswordResetRequest)
             .filter_by(user_id=user.id, status="pending")

@@ -146,6 +146,9 @@ export function createApi(token, onUnauthorized) {
 
     // User management (admins only). resetUserPassword returns the one-time temporary password.
     listUsers: () => call("/users"),
+    listPendingUsers: () => call("/users/pending"),
+    approveUser: (id) => call(`/users/${id}/approve`, { method: "POST" }),
+    rejectUser: (id) => call(`/users/${id}/reject`, { method: "POST" }),
     updateUser: (id, body) => call(`/users/${id}`, { method: "PATCH", body }),
     resetUserPassword: (id) => call(`/users/${id}/reset-password`, { method: "POST" }),
     deleteUser: (id) => call(`/users/${id}`, { method: "DELETE" }),
