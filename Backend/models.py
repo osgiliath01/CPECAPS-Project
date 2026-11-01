@@ -163,6 +163,17 @@ class ActivityLog(Base):
     details = Column(JSON, nullable=True)                         # before/after values, reasons, etc.
 
 
+class RateEvent(Base):
+    """One sign-up or forgot-password request, kept for a day to limit how often they can happen
+    (security.rate_limited)."""
+    __tablename__ = "rate_events"
+
+    id = Column(Integer, primary_key=True)
+    kind = Column(String(30), nullable=False, index=True)
+    ip = Column(String(64), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+
 class LoginChallenge(Base):
     """A sign-in from a new device while the account is open on another one. The other
     device is asked to allow or block it; the new device waits with `secret` to collect

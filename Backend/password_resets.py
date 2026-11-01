@@ -4,11 +4,12 @@
 2. An admin approves it and gets a one-time temporary password to hand over in person.
 3. The user signs in with it and must set a new password before using the app.
 """
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -82,10 +83,20 @@ def _note(payload: Optional[ReviewNote]) -> Optional[str]:
     return ((payload.note or "").strip() or None) if payload else None
 
 
+RESET_PER_IP = int(os.getenv("RESET_PER_IP_PER_HOUR", "10"))
+RESET_TOTAL = int(os.getenv("RESET_TOTAL_PER_HOUR", "60"))
+
+
 @router.post("/auth/reset-request", status_code=status.HTTP_202_ACCEPTED)
-def request_password_reset(payload: ResetRequestCreate, db: Session = Depends(database.get_db)):
+def request_password_reset(payload: ResetRequestCreate, request: Request, db: Session = Depends(database.get_db)):
     """No sign-in needed. Always gives the same answer, so it can't be used to find out
-    which usernames exist."""
+    which usernames exist. Limited per address and overall, since anyone can call it."""
+    ip = security.client_ip(request)
+    if security.rate_limited(db, "reset_request", ip, per_ip=RESET_PER_IP, total=RESET_TOTAL, minutes=60):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Too many password reset requests recently. Please try again later.")
+    security.note_event(db, "reset_request", ip)
+    db.commit()
     username = payload.username.strip()
     message = (payload.message or "").strip() or None
     user = db.query(models.User).filter(models.User.username == username).first()

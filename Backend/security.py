@@ -5,7 +5,9 @@ from typing import Optional
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+import ipaddress
+
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -55,6 +57,39 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     password_bytes = plain_password.encode("utf-8")[:72]
     hashed_bytes = hashed_password.encode("utf-8")
     return bcrypt.checkpw(password_bytes, hashed_bytes)
+
+
+def client_ip(request: Request) -> str:
+    """The visitor's address. Behind nginx (and Tailscale Funnel) it's the first address in
+    X-Forwarded-For. It can be faked, so it's only used for per-address limits; every limit
+    also has an overall cap that doesn't depend on it."""
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    candidate = forwarded or request.headers.get("x-real-ip") or (request.client.host if request.client else "")
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return ""
+
+
+def rate_limited(db: Session, kind: str, ip: str, per_ip: int, total: int, minutes: int) -> bool:
+    """True if `kind` (e.g. "register") happened too often lately: `per_ip` times from this
+    address, or `total` times from anywhere, in the last `minutes`."""
+    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    recent = db.query(func.count(models.RateEvent.id)).filter(
+        models.RateEvent.kind == kind, models.RateEvent.created_at > since)
+    if total and recent.scalar() >= total:
+        return True
+    if ip and per_ip and recent.filter(models.RateEvent.ip == ip).scalar() >= per_ip:
+        return True
+    return False
+
+
+def note_event(db: Session, kind: str, ip: str) -> None:
+    """Counts one `kind` event for rate_limited, and drops counts older than a day."""
+    db.add(models.RateEvent(kind=kind, ip=ip or None))
+    db.query(models.RateEvent).filter(
+        models.RateEvent.created_at < datetime.now(timezone.utc) - timedelta(days=1)
+    ).delete(synchronize_session=False)
 
 
 def login_locked_minutes(db: Session, username: str) -> int:

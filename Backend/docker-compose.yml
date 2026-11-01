@@ -10,6 +10,14 @@ x-backend-env: &backend-env
   # Minutes without activity before a sign-in expires (renewed while the person is active)
   SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-30}
   SINGLE_SESSION_EXEMPT: ${SINGLE_SESSION_EXEMPT:-}
+  # Websites other than the app itself that may call the API (developers' npm run dev)
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+  # Limits on sign-ups and forgot-password requests (README 4.20)
+  REGISTER_PER_IP_PER_HOUR: ${REGISTER_PER_IP_PER_HOUR:-10}
+  REGISTER_TOTAL_PER_HOUR: ${REGISTER_TOTAL_PER_HOUR:-30}
+  MAX_WAITING_ACCOUNTS: ${MAX_WAITING_ACCOUNTS:-50}
+  RESET_PER_IP_PER_HOUR: ${RESET_PER_IP_PER_HOUR:-10}
+  RESET_TOTAL_PER_HOUR: ${RESET_TOTAL_PER_HOUR:-60}
   # The assistant's model server and model (see the ollama service below and chatbot.py)
   OLLAMA_HOST: http://ollama:11434
   OLLAMA_MODEL: qwen3:4b-instruct-2507-q4_K_M
@@ -29,7 +37,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Backend/.env}
       POSTGRES_DB: caic_db
     ports:
-      - "0.0.0.0:5432:5432"
+      # Only this computer (and Tailscale, which forwards database.nyala-ordinal.ts.net:5432 to it)
+      # can reach the database; other devices on the same network can't. DB_BIND=0.0.0.0 opens it.
+      - "${DB_BIND:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -49,7 +59,9 @@ services:
       DB_POOL_SIZE: 10        # per process: 4 x (10 + 10) = up to 80 connections
       DB_MAX_OVERFLOW: 10
     ports:
-      - "0.0.0.0:8000:8000"
+      # For developers through Tailscale (database.nyala-ordinal.ts.net:8000). Everyone else uses
+      # the app on port 80, which passes /api/... on. API_BIND=0.0.0.0 opens it to the network.
+      - "${API_BIND:-127.0.0.1}:8000:8000"
     depends_on:
       db:
         condition: service_healthy

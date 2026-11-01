@@ -39,7 +39,9 @@ export default function Login({ onLogin, onToken, signedOutReason, onRegister, o
     if (isRegister) {
       // same limits as the backend's UserCreate schema
       if (name.length < 3) return setError("Full name must be at least 3 characters.");
-      if (username.length < 3) return setError("Username must be at least 3 characters.");
+      // Same rule as the backend (auth.py, USERNAME_RULE)
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,49}$/.test(username))
+        return setError("Usernames are 3 to 50 letters, numbers, dots, dashes or underscores, with no spaces.");
       if (form.password.length < 8) return setError("Password must be at least 8 characters.");
       if (form.password !== form.confirm) return setError("The passwords don't match.");
     }
@@ -189,6 +191,9 @@ export default function Login({ onLogin, onToken, signedOutReason, onRegister, o
                   required
                 />
               </label>
+              {isRegister && (
+                <p className="muted small field-hint">Letters, numbers, dots, dashes or underscores; no spaces.</p>
+              )}
               {isReset ? (
                 <label>
                   Message for the admin (optional)

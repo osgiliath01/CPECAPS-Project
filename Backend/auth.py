@@ -1,9 +1,12 @@
 import asyncio
+import os
+import re
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Annotated, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from sqlalchemy import func
 from fastapi.responses import JSONResponse
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
@@ -74,17 +77,32 @@ app.include_router(chatbot.router)
 app.include_router(profiles.router)
 app.include_router(sessions.router)
 app.include_router(bulk.router)
+# Which other websites may call the API from a browser. The app itself doesn't need this: it's
+# served from the same address (nginx passes /api/... on). Only developers running
+# "npm run dev" against the shared backend do, so by default that's all that's allowed.
+# Sign-in uses a token in a header, not cookies, so no credentials are shared with other sites.
+CORS_ORIGINS = [o.strip() for o in os.getenv(
+    "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins during development
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows GET, POST, PUT, DELETE, OPTIONS, etc.
-    allow_headers=["*"],  # Allows Authorization headers and tokens
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # ==========================================
 # AUTHENTICATION & USER ROUTES
 # ==========================================
+
+
+# Sign-up rules (see register_user)
+USERNAME_RULE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,49}$")
+RESERVED_USERNAMES = {"system", "admin", "administrator", "root", "superuser", "support", "caic",
+                      "api", "null", "undefined", "everyone", "staff", "anonymous"}
+REGISTER_PER_IP = int(os.getenv("REGISTER_PER_IP_PER_HOUR", "10"))
+REGISTER_TOTAL = int(os.getenv("REGISTER_TOTAL_PER_HOUR", "30"))
+MAX_WAITING_ACCOUNTS = int(os.getenv("MAX_WAITING_ACCOUNTS", "50"))
 
 
 @app.post(
@@ -94,18 +112,45 @@ app.add_middleware(
     tags=["Authentication"],
 )
 def register_user(
-    payload: schemas.UserCreate, db: Session = Depends(database.get_db)
+    payload: schemas.UserCreate, request: Request, db: Session = Depends(database.get_db)
 ):
     """Registers a new user account. It can't sign in until an admin approves it."""
-    existing_user = crud.get_user_by_username(db, username=payload.username)
-    if existing_user:
+    username = payload.username.strip()
+    if not USERNAME_RULE.match(username):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usernames are 3 to 50 letters, numbers, dots, dashes or underscores, "
+                   "starting with a letter or number (no spaces).",
+        )
+    # "Admin" and "admin" would look the same in the Activity Log, so names are unique
+    # ignoring capitals; and a few names are kept for the system
+    if username.lower() in RESERVED_USERNAMES or db.query(models.User.id).filter(
+        func.lower(models.User.username) == username.lower()
+    ).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username is already taken",
         )
+    # Sign-ups are open to anyone with the link, so limit how fast accounts can be made
+    ip = security.client_ip(request)
+    if security.rate_limited(db, "register", ip, per_ip=REGISTER_PER_IP, total=REGISTER_TOTAL, minutes=60):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many new accounts were made recently. Please try again later or ask an admin.",
+        )
+    waiting = db.query(func.count(models.User.id)).filter(models.User.is_approved.is_(False)).scalar()
+    if waiting >= MAX_WAITING_ACCOUNTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many accounts are waiting for approval. Ask an admin to review them first.",
+        )
+    security.note_event(db, "register", ip)
+    payload.username = username
+    payload.name = " ".join(payload.name.split())
     user = crud.create_user(db=db, user_in=payload)
     activity.log(db, user.username, "register",
-                 f"Registered account '{user.username}' ({user.name}); waiting for approval", "user", user.id)
+                 f"Registered account '{user.username}' ({user.name}); waiting for approval", "user", user.id,
+                 {"ip": ip} if ip else None)
     db.commit()
     return user
 

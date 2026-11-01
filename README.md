@@ -107,6 +107,7 @@ The version in use is shown at the bottom of the user menu and on the sign-in pa
 - **Sign-in protection:** after **5 wrong passwords** for one username, that username is refused for **15 minutes** ("Too many wrong passwords…"); a successful sign-in resets the count. Blocked tries aren't logged, so they can't flood the Activity Log. Change the numbers with `LOGIN_MAX_FAILURES` / `LOGIN_LOCK_MINUTES`. Note that anyone who knows a username can lock it for 15 minutes this way; the owner can wait or use **Forgot password**.
 - **AI model** (about 2.5 GB): `docker compose -p backend exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M`
 - **GPU:** the `ollama` service is set up for an **NVIDIA GPU** (see [4.14](#414-assistant-local-ai-model)). On a machine without one, delete the `reservations:` block under `ollama` in `Backend/docker-compose.yml` (and push), or that container won't start.
+- **Database and backend ports are private:** 5432 and 8000 only accept connections from the server itself, and Tailscale forwards the tailnet's `database.nyala-ordinal.ts.net:5432/8000` to them. Other devices on the same office network can't reach them. Only port 80 (the app) is open to the network. See 4.20.
 - **Port 80** must be free on the server. If another program uses it, change `"0.0.0.0:80:80"` under `web` to e.g. `"0.0.0.0:8081:80"` and use that port in the address.
 - **Keep it available:** the server must be on, awake, signed in, running Docker Desktop and connected to Tailscale. Set Windows to never sleep while plugged in.
 - The backend connects to the database inside Docker (`db:5432`) and upgrades it by itself on start (see [section 5](#5-database-changes)).
@@ -560,6 +561,19 @@ A sign-in ends after **30 minutes without activity**, not 30 minutes after signi
 - **Mark as done ✓** ticks a guide off. Progress (*5 of 24 done*) is remembered in that browser for each user; **Reset** clears it.
 - **Keeping it current:** button and label names in the steps are written exactly as they appear in the app (shown in bold). When a screen changes, update its guide in `help/guides.js`.
 
+### 4.20 Security hardening
+
+| What | Where | Setting |
+|---|---|---|
+| **Database (5432) and backend (8000) only on the server itself.** Tailscale forwards the tailnet addresses to them, so developers aren't affected; other devices on the office network can't reach them. Port 80 (the app) stays open. | `docker-compose.yml` | `DB_BIND`, `API_BIND` (default `127.0.0.1`; `0.0.0.0` opens them) |
+| **CORS:** only the app itself (same address) and developers' `npm run dev` (`localhost:5173`) can call the API from a browser. No credentials are shared with other sites. | `auth.py` | `CORS_ORIGINS` (comma-separated) |
+| **API docs not public:** `/api/docs`, `/api/redoc` and `/api/openapi.json` return 404 through the app's link. Developers still use `http://database.nyala-ordinal.ts.net:8000/docs`. | `Frontend/nginx.conf` | |
+| **Limits on open endpoints:** sign-ups at most 10 per hour per address and 30 per hour overall, and refused while 50 accounts are already waiting for approval. Forgot-password: 10 per hour per address, 60 overall. Over the limit, people get a "try again later" message. Counted in `rate_events` (kept a day). | `auth.py`, `password_resets.py`, `security.py` | `REGISTER_PER_IP_PER_HOUR`, `REGISTER_TOTAL_PER_HOUR`, `MAX_WAITING_ACCOUNTS`, `RESET_PER_IP_PER_HOUR`, `RESET_TOTAL_PER_HOUR` |
+| **Security headers** on every response: a Content-Security-Policy (only the app's own scripts and data, Google Fonts, and images from itself, `data:` and `blob:`), no framing by other sites, no content-type guessing, a limited referrer, and no camera/microphone/location. The nginx version isn't shown. | `Frontend/security-headers.conf`, included by `nginx.conf` | |
+| **Usernames for new accounts:** 3 to 50 letters, numbers, dots, dashes or underscores, starting with a letter or number. They're unique ignoring capitals (no `Admin` next to `admin`). Reserved names (`system`, `admin`, `root`, `support`…) are refused. Existing accounts are unchanged. | `auth.py` (`USERNAME_RULE`, `RESERVED_USERNAMES`), `Login.jsx` | |
+
+If the app ever loads something from another site (a new font, a map, an analytics script), add that site to the Content-Security-Policy in `security-headers.conf`, or the browser will block it.
+
 ### 4.18 Mobile view
 
 Below 640px wide (phones), the app switches layout (`App.css`, section *Phones*; checked at 390px and 360px):
@@ -993,7 +1007,7 @@ These were found during the work but are not fixed yet:
 3. **The root `requirements.txt` is saved as UTF-16** (from PowerShell's `>`), and includes Windows-only packages. The shared backend uses `Backend/requirements.txt` instead. To fix the root one, regenerate it as UTF-8:
    `pip freeze | Out-File -Encoding utf8 requirements.txt`
 4. **Secrets:** the token key and database password are no longer in the code; they live in `Backend\.env` on the server (see [Server setup](#server-setup-first-time-only)). The old values are still in Git history but no longer work once the server uses the new ones.
-5. **CORS allows every origin** (`allow_origins=["*"]`). Restrict it to the real frontend address before deploying.
+5. **CORS** is limited to `CORS_ORIGINS` (default: developers' `npm run dev` on port 5173). See 4.20.
 6. **Line endings:** files use Windows (CRLF) endings, so git may show whole files as changed. `git config core.autocrlf true` avoids this.
 7. **Assistant limits:** it runs `qwen3:4b-instruct-2507-q4_K_M`, a small model. The safety net makes sure the right records are looked up, but the wording can still be off, so test it with a set of questions whose answers you know before relying on it. It answers one question at a time, so simultaneous users wait in turn. On a 4 GB GPU part of the model may run on the CPU, which is slower.
 8. **Single-admin lockout:** an admin can't approve their own password reset. If the only admin forgets their password, reset it on the server, from the `Backend` folder:
