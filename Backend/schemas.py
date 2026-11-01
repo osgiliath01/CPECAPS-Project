@@ -59,6 +59,9 @@ class DisbursementItemResponse(BaseModel):
     updated_at: datetime
     created_by: str
     updated_by: str
+    # Full names for the screens (created_by / updated_by keep the stored username)
+    created_by_name: Optional[str] = None
+    updated_by_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

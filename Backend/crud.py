@@ -87,6 +87,35 @@ def get_all_projects(db: Session) -> List[dict]:
 _ENTRY_FIELDS = ("id", "date", "payee", "cv_no", "amount", "created_at", "updated_at", "created_by", "updated_by")
 
 
+def display_person(value: Optional[str], names: dict) -> Optional[str]:
+    """Who did something, as a full name. Entries store a username (new entries), a full name
+    (most edits) or "username | Full Name" (older data). A username whose account was deleted
+    is shown as it is."""
+    if not value:
+        return value
+    if " | " in value:
+        return value.split(" | ")[-1].strip()
+    return names.get(value, value)
+
+
+def with_person_names(db: Session, items: list) -> list:
+    """Adds created_by_name / updated_by_name to entries (dicts or database rows) for the
+    screens. created_by / updated_by keep the stored value. One query for all the entries."""
+    get = lambda item, f: item.get(f) if isinstance(item, dict) else getattr(item, f, None)
+    usernames = {v for item in items for v in (get(item, "created_by"), get(item, "updated_by")) if v and " | " not in v}
+    names = dict(
+        db.query(models.User.username, models.User.name).filter(models.User.username.in_(usernames)).all()
+    ) if usernames else {}
+    for item in items:
+        created = display_person(get(item, "created_by"), names)
+        updated = display_person(get(item, "updated_by"), names)
+        if isinstance(item, dict):
+            item["created_by_name"], item["updated_by_name"] = created, updated
+        else:
+            item.created_by_name, item.updated_by_name = created, updated
+    return items
+
+
 def get_active_disbursements(db: Session) -> List[dict]:
     """Every active entry with its project title, newest first, in a single query.
     Voucher Control uses this instead of asking for each project's summary separately."""
@@ -97,7 +126,7 @@ def get_active_disbursements(db: Session) -> List[dict]:
         .order_by(models.Disbursement.date.desc(), models.Disbursement.id.desc())
         .all()
     )
-    return [{**{f: getattr(d, f) for f in _ENTRY_FIELDS}, "project_title": title} for d, title in rows]
+    return with_person_names(db, [{**{f: getattr(d, f) for f in _ENTRY_FIELDS}, "project_title": title} for d, title in rows])
 
 
 def get_project_by_title(db: Session, title: str) -> Optional[models.Project]:
@@ -122,7 +151,7 @@ def get_project_summary(db: Session, project_title: str) -> Optional[dict]:
 
     return {
         "project_title": project.title,
-        "entries": project.active_disbursements,
+        "entries": with_person_names(db, list(project.active_disbursements)),
         "total_amount": project.total_amount,
     }
 

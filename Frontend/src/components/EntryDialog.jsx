@@ -121,8 +121,8 @@ export default function EntryDialog({ mode, entry, defaultProject, user, onSave,
           {mode === "create"
             ? `Encoded by ${user.name}.`
             : asRequest
-              ? `Added by ${entry.created_by} on ${fmtStamp(entry.created_at)}. An admin will review your changes before they're applied.`
-              : `Added by ${entry.created_by} on ${fmtStamp(entry.created_at)}. Your name will be recorded as the editor.`}
+              ? `Added by ${entry.created_by_name || entry.created_by} on ${fmtStamp(entry.created_at)}. An admin will review your changes before they're applied.`
+              : `Added by ${entry.created_by_name || entry.created_by} on ${fmtStamp(entry.created_at)}. Your name will be recorded as the editor.`}
         </p>
 
         {error && (

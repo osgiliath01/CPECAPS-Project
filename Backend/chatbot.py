@@ -197,23 +197,43 @@ def tool_search_entries(db: Session, args: dict, user: dict) -> dict:
         .select_from(models.Disbursement).join(models.Project).filter(*conditions).scalar()
     )
     rows = base.order_by(models.Disbursement.date.desc(), models.Disbursement.id.desc()).limit(limit).all()
+    names = _full_names(db, rows)
     return {
         **notes,
         "matching_entries": count,
         "total_amount": _money(total),
         "showing": len(rows),
-        "entries": [_entry_row(d) for d in rows],
+        "entries": [_entry_row(d, names) for d in rows],
     }
 
 
-def _entry_row(d) -> dict:
-    """One entry for the model, including who added it and who last changed it."""
+def _full_names(db: Session, rows) -> dict:
+    """username -> full name, for the people who added or edited these entries."""
+    usernames = {v for d in rows for v in (d.created_by, d.updated_by) if v}
+    if not usernames:
+        return {}
+    return dict(db.query(models.User.username, models.User.name).filter(models.User.username.in_(usernames)).all())
+
+
+def _person(value: Optional[str], names: dict) -> Optional[str]:
+    """Shows who did something by full name. Entries store either a username, a full name, or
+    "username | Full Name"; a username of a deleted account stays as it is."""
+    if not value:
+        return value
+    if " | " in value:
+        return value.split(" | ")[-1].strip()
+    return names.get(value, value)
+
+
+def _entry_row(d, names: Optional[dict] = None) -> dict:
+    """One entry for the model, including who added it and who last changed it (full names)."""
+    names = names or {}
     row = {"date": d.date.isoformat(), "project": d.project.title, "cv_no": d.cv_no,
            "payee": d.payee, "amount": _money(d.amount),
-           "created_by": d.created_by, "created_on": _local_day(d.created_at)}
+           "created_by": _person(d.created_by, names), "created_on": _local_day(d.created_at)}
     # Shown only when the entry was really changed after it was added
     if d.updated_at and d.created_at and (d.updated_at - d.created_at).total_seconds() > 60:
-        row["last_edited_by"] = d.updated_by
+        row["last_edited_by"] = _person(d.updated_by, names)
         row["last_edited_on"] = _local_day(d.updated_at)
     return row
 
@@ -590,9 +610,9 @@ def _system_prompt(user: dict) -> str:
         "returns them.\n"
         "- If a tool returns an error or nothing matches, say so plainly and suggest what to try.\n"
         "- Archived entries are not included; mention that if it matters.\n"
-        "- Each entry has created_by (the username that added it) and, if it was changed later, last_edited_by. "
+        "- Each entry has created_by (the full name of who added it) and, if it was changed later, last_edited_by. "
         "For 'who created/added/edited' questions, look the entry up (again, if it was mentioned earlier) and "
-        "answer with those usernames.\n"
+        "answer with those names exactly as given.\n"
         "- You can only read data. To change or archive an entry, the user uses the Edit or Archive buttons.\n"
         "- Don't invent rules about who can do what; go by the guide below.\n"
         "- Only help with this system and its records. For anything else (poems, stories, general "

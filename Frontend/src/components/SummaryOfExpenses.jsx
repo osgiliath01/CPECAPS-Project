@@ -106,12 +106,12 @@ export default function SummaryOfExpenses({ summary, q, isAdmin, onBack, onNew, 
                 <td>{e.payee}</td>
                 <td className="amount">{money(e.amount)}</td>
                 <td className="small">
-                  {e.created_by.split(" | ").pop()}
+                  {e.created_by_name || e.created_by.split(" | ").pop()}
                   <br />
                   {fmtStamp(e.created_at)}
                 </td>
                 <td className="small">
-                  {e.updated_by}
+                  {e.updated_by_name || e.updated_by}
                   <br />
                   {fmtStamp(e.updated_at)}
                 </td>

@@ -310,6 +310,7 @@ def record_disbursement(
                  "disbursement", d.id, {"entry": activity.snapshot(d)})
     db.commit()
     db.refresh(d)
+    crud.with_person_names(db, [d])
     return d
 
 
@@ -350,6 +351,7 @@ def update_disbursement_log(
                      "disbursement", updated_item.id, {"changes": changes})
         db.commit()
         db.refresh(updated_item)
+    crud.with_person_names(db, [updated_item])
     return updated_item
 
 
