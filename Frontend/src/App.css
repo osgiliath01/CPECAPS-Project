@@ -666,6 +666,10 @@ button { cursor: pointer; }
   .vtable thead th { display: block; flex-shrink: 0; padding: 0.1rem 0 0.55rem; font-size: 0.75rem; white-space: nowrap; }
   .vtable thead th.col-actions { display: none; }
   .vtable tbody tr, .review-table tbody tr { display: block; padding: 0.7rem 0.2rem; }
+  /* A clear line between cards (an expanded "Manage" panel stays joined to its row) */
+  .review-table tbody tr { padding: 0.9rem 0.2rem; border-bottom: 2px solid var(--line); }
+  .review-table tbody tr:last-child { border-bottom: 0; }
+  .review-table tbody tr.row-selected { border-bottom: 0; }
   .vtable tbody td, .review-table tbody td {
     display: block; height: auto; min-width: 0; padding: 0.22rem 0.2rem; border: 0;
     text-align: right; font-size: 0.95rem; white-space: normal; overflow-wrap: anywhere;
