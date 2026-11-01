@@ -1,11 +1,23 @@
-# CPECAPS Project — Changes (October 30 – November 1, 2026)
+# CPECAPS Project — CAIC Voucher System
 
-This document describes every change made to the Calamba Allied Industrial Corporation voucher system between October 30 and November 1, 2026: what was added, how each feature behaves, the database and API changes, and how to test them.
+A voucher and disbursement system for **Calamba Allied Industrial Corporation**: projects, check voucher entries, approvals, an activity log, and an AI assistant that answers questions about the records. Backend in **FastAPI** with **PostgreSQL**, frontend in **React** (Vite), all running in **Docker** on one shared server, plus a local AI model through **Ollama**.
+
+This README covers the `feature/activity-log-archiving` branch: how to use, develop and deploy the system, and every change made between October 30 and November 1, 2026 (what was added, how it behaves, database and API changes, and how to test it).
+
+**Quick start**
+
+- **Use the app:** connect to Tailscale and open **http://database.nyala-ordinal.ts.net/**
+- **Change the code:** see [Developing](#developing-changing-the-code)
+- **Put changes live:** see [Deploying](#deploying-putting-changes-live)
 
 **Contents**
 
 1. [Summary](#1-summary)
-2. [Running the project](#2-running-the-project)
+2. [Running, developing and deploying](#2-running-developing-and-deploying)
+   - Using the app
+   - Server setup (first time only)
+   - Developing (changing the code)
+   - Deploying (putting changes live)
 3. [Roles and permissions](#3-roles-and-permissions)
 4. [Features](#4-features)
    - 4.1 Superadmin account
@@ -54,80 +66,158 @@ This document describes every change made to the Calamba Allied Industrial Corpo
 
 ---
 
-## 2. Running the project
+## 2. Running, developing and deploying
 
 Everything runs on **one server** (currently the laptop `aaron`), in Docker: the database, the backend, the app's screens and the AI model server. Everyone else just opens the app in a browser over **Tailscale**:
 
 > **http://database.nyala-ordinal.ts.net/**
 
-No code, no npm, no Python needed to use it. The version in use is shown in the user menu and on the sign-in page.
+```
+Browsers ──Tailscale──► database.nyala-ordinal.ts.net (the server)
+                          ├─ web     :80    the app's screens (nginx) ── /api/… ──┐
+                          ├─ api     :8000  the backend (FastAPI)  ◄──────────────┘
+                          ├─ db      :5432  the database (PostgreSQL)
+                          └─ ollama         the AI model (private, GPU)
+```
 
-### Using the app (testers, adviser, client demos)
+### Using the app
+
+For testers, the adviser and client demos. No code, npm or Python needed.
 
 1. Connect to Tailscale.
 2. Open **http://database.nyala-ordinal.ts.net/** and sign in.
 
-When a new version is deployed, a bar appears at the top: **"A new version of the app is available"**, with a **Refresh** button.
-
-### Deploying (on the server)
-
-Deploys always come **from GitHub**, never from someone's working folder. `deploy.ps1` (in the project root) builds the pushed code in a separate folder (`.deploy\live`), so your own working folder, branch and unsaved changes are never touched. Data and the downloaded AI model are kept.
-
-```powershell
-cd "D:\Documents\TERM 10\CPECAPS\Project"
-.\deploy.ps1                                      # deploy the latest main
-.\deploy.ps1 -Branch feature/activity-log-archiving   # or a branch (e.g. before it's merged)
-```
-
-Then check http://localhost/ and the version in the user menu. Results are also written to `.deploy\deploy.log`.
-
-- **Only pushed commits are deployed.** Commit and push first.
-- **Don't run `docker compose up` from the `Backend` folder on the server** any more: that would build your working folder instead of GitHub's code. Use `deploy.ps1`.
-- **Preview a branch** (app screens only) on port 8080, without touching the live app on port 80:
-  ```powershell
-  .\deploy.ps1 -Preview -Branch feature/new-screen     # http://database.nyala-ordinal.ts.net:8080/
-  .\deploy.ps1 -StopPreview
-  ```
-  The preview uses the **live backend and data**, so it's for frontend changes. Backend changes are tested locally (see below), not previewed.
-- **Automatic deploys** (optional): `.\install-autodeploy.ps1` adds a Windows scheduled task that checks GitHub every 5 minutes and deploys `main` when it changed, so merging a pull request updates the shared app. It runs while you're signed in; turn it off with `.\install-autodeploy.ps1 -Remove`. Use it once `main` is stable.
-- If Windows blocks the scripts ("running scripts is disabled"), run once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+The version in use is shown at the bottom of the user menu and on the sign-in page (e.g. *Version 2026.11.01 · fa86ea2*). After a deploy, open screens show **"A new version of the app is available"** with a **Refresh** button.
 
 ### Server setup (first time only)
 
 - **Tailscale:** `database.nyala-ordinal.ts.net` is a **Tailscale Service** (`svc:database`) that forwards to the server. It must forward ports **80** (app), **8000** (backend, for developers), **5432** (database) and, if you use previews, **8080**. For each port: allow `tcp:<port>` on the service in the Tailscale admin console, then run `tailscale serve --service=svc:database --tcp=<port> tcp://127.0.0.1:<port>`. Check with `tailscale serve status`.
-- **Default admin:** `docker compose -p backend exec api python main.py`
+- **First deploy:** clone the repository, then run `.\deploy.ps1` (see [Deploying](#deploying-putting-changes-live)). If Windows says scripts are disabled, run once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+- **Default admin:** `docker compose -p backend exec api python main.py` (sign in as `admin` / `admin123`, then change the password).
 - **AI model** (about 2.5 GB): `docker compose -p backend exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M`
 - **GPU:** the `ollama` service is set up for an **NVIDIA GPU** (see [4.14](#414-assistant-local-ai-model)). On a machine without one, delete the `reservations:` block under `ollama` in `Backend/docker-compose.yml` (and push), or that container won't start.
 - **Port 80** must be free on the server. If another program uses it, change `"0.0.0.0:80:80"` under `web` to e.g. `"0.0.0.0:8081:80"` and use that port in the address.
+- **Keep it available:** the server must be on, awake, signed in, running Docker Desktop and connected to Tailscale. Set Windows to never sleep while plugged in.
 - The backend connects to the database inside Docker (`db:5432`) and upgrades it by itself on start (see [section 5](#5-database-changes)).
 - Useful commands (from any folder): `docker compose -p backend ps`, `docker compose -p backend logs -f api`.
 
-### Developing (team members changing code)
+### Developing (changing the code)
 
-Pull the code and run the screens locally against the shared backend:
+Team members never touch the server. They change code on their own computer, push it to GitHub, and it reaches the shared app when it's deployed.
 
+**The routine**
+
+1. **Start from the latest code, on a new branch:**
+   ```powershell
+   git switch main
+   git pull
+   git switch -c feature/short-description
+   ```
+2. **Make and test the change locally** (frontend-only or backend, see below).
+3. **Push and open a pull request:**
+   ```powershell
+   git add -A
+   git commit -m "What changed"
+   git push -u origin feature/short-description
+   ```
+   On GitHub, open a pull request into `main`; another teammate reviews it. For frontend changes, the server can also show it to others first with a [preview](#deploying-putting-changes-live).
+4. **Merge, then deploy** (see [Deploying](#deploying-putting-changes-live)).
+
+**Frontend-only changes** (new or changed screens, using the shared backend and database)
+
+This is the simplest case: run **only the frontend** on your computer. No Python, Docker or database needed.
+
+Once:
 ```powershell
+git pull
 cd Frontend
-copy .env.example .env.local      # sets VITE_API_URL to the shared backend (port 8000)
+copy .env.example .env.local     # VITE_API_URL=http://database.nyala-ordinal.ts.net:8000
 npm install
-npm run dev
 ```
 
-Your local screens show **"Development build"** as their version. You must be connected to Tailscale.
+Each time:
+```powershell
+git switch -c feature/new-screen
+cd Frontend
+npm run dev                      # opens http://localhost:5173
+```
 
-**Changing backend code:** run a backend locally, preferably against a test copy of the database, and stop it when done:
+```
+Your laptop                            The server (shared)
+npm run dev (your edited screens) ──► backend :8000 ──► database
+                                          ▲
+Everyone else, shared link :80 ───────────┘ (the deployed screens)
+```
+
+- **Only you see the changed screens**, at `localhost:5173` (labelled *Development build*). Everyone else keeps using the deployed version until your change is merged and deployed.
+- **The data is shared and real.** Your local screens show the same projects and entries as everyone else, live updates included, and anything you add, edit or archive while testing really happens. Test with a test project (e.g. "ZZ Test Project") or a test account, and archive it afterwards.
+- **Edits show instantly:** saving a file updates your browser right away.
+- **You need Tailscale connected**, and the server must be on.
+- **If the new screen needs data the backend doesn't provide yet** (a new filter, a new field), it's no longer frontend-only: the backend has to be changed first, as below.
+
+**Backend changes** (new routes, fields, rules)
+
+Run your own backend locally against a **test database**, never the real one: a backend under development can change or upgrade the real tables. The backend creates a missing database by itself:
 
 ```powershell
 cd Backend
 ..\venv\Scripts\activate
+$env:DATABASE_URL = "postgresql+psycopg://postgres:caic123@database.nyala-ordinal.ts.net:5432/caic_db_test"
+python main.py                      # first time: creates caic_db_test, its tables and the admin
 uvicorn auth:app --reload --timeout-graceful-shutdown 3
 ```
 
-and temporarily point your frontend at it with `VITE_API_URL=http://localhost:8000` in `.env.local`.
+Point your local screens at it with `VITE_API_URL=http://localhost:8000` in `Frontend\.env.local`, and switch it back to the shared backend when done. API docs: http://localhost:8000/docs (local) or http://database.nyala-ordinal.ts.net:8000/docs (shared).
 
-When the work is ready: push, open a pull request into `main`, have it reviewed and merged, then deploy (or let automatic deploys pick it up).
+**Team rules**
 
-- API docs (Swagger): http://database.nyala-ordinal.ts.net:8000/docs, or `/docs` on your local backend
+- **Never commit straight to `main`.** Everything goes through a pull request, so `main` is always deployable.
+- **Only pushed and merged code goes live.** Changes sitting on a laptop don't reach the shared app.
+- **Database changes:** new columns must also be added in `database.ensure_schema()` (as the existing ones are), so the server upgrades the real database by itself on the next deploy.
+- **Short-lived branches:** one branch per change, deleted after merging. The old long-lived `backend` and `frontend` branches can be retired.
+
+### Deploying (putting changes live)
+
+Deploys always come **from GitHub**, never from someone's working folder. Two steps:
+
+1. **On GitHub:** the pull request is reviewed and **merged into `main`**.
+2. **On the server:**
+   ```powershell
+   cd "D:\Documents\TERM 10\CPECAPS\Project"
+   .\deploy.ps1
+   ```
+   With **automatic deploys** on, skip this: the server notices the merge within 5 minutes and runs the same thing by itself.
+
+**What `deploy.ps1` does**
+
+1. Fetches the latest `main` from GitHub into `.deploy\live`. The working folder on the server isn't touched.
+2. Rebuilds what changed: for screen changes, `npm run build` creates the new screens and puts them into nginx with the new version stamp. Docker reuses everything that didn't change; the database and the AI model are kept.
+3. Restarts only what changed (for a frontend change, just the `web` container: a few seconds' interruption of the link).
+4. Writes the result to `.deploy\deploy.log`.
+
+**What users see:** within a minute, open screens show *"A new version of the app is available — Refresh"*. After refreshing, the user menu shows the new version. Anyone opening the link fresh gets it straight away.
+
+**Check it worked:** open http://localhost/ (or the shared link) and compare the version in the user menu with the latest commit on `main` in GitHub.
+
+**If something's wrong:** on GitHub, open the merged pull request and click **Revert**, merge the revert, and deploy again (or let automatic deploys do it). The previous version comes back. If a deploy fails partway, the running app stays as it was, and the reason is in `.deploy\deploy.log`.
+
+**All deploy commands** (project root, on the server):
+
+| Command | What it does |
+|---|---|
+| `.\deploy.ps1` | Builds the latest `main` from GitHub and restarts what changed |
+| `.\deploy.ps1 -Branch <name>` | Same, for another pushed branch (e.g. before it's merged) |
+| `.\deploy.ps1 -Preview -Branch <name>` | Builds only that branch's screens and serves them on port 8080 (http://database.nyala-ordinal.ts.net:8080/), using the live backend and data. The live app on port 80 isn't affected. For frontend changes only |
+| `.\deploy.ps1 -StopPreview` | Removes the preview |
+| `.\deploy.ps1 -Auto` | Deploys `main` only if it changed since the last deploy (used by the scheduled task) |
+| `.\install-autodeploy.ps1` | Turns automatic deploys on: checks GitHub every 5 minutes (`-Minutes 10` to change) while you're signed in |
+| `.\install-autodeploy.ps1 -Remove` | Turns automatic deploys off |
+
+- **Only pushed commits are deployed.** Commit and push first.
+- **Don't run `docker compose up` from the `Backend` folder on the server** any more: that would build the working folder instead of GitHub's code.
+- **Automatic deploys** are worth turning on once `main` is stable and every change goes through review.
+
+**At the client:** the same routine on their server, with the same `deploy.ps1` from the same GitHub `main`. Only the address changes, and there you'd normally deploy at planned times rather than automatically.
 
 ## 3. Roles and permissions
 
@@ -375,16 +465,7 @@ The first answer after 30 minutes idle takes longer while the model loads.
 
 **Versions.** Each deploy stamps the app with the commit's date, its short commit ID and branch, e.g. *Version 2026.11.01 · fa86ea2*, plus the branch name when it isn't `main`. It's shown at the bottom of the user menu and on the sign-in page; local `npm run dev` copies show *Development build*. The deployed app also publishes `/version.json`; open screens check it every minute (and when the tab is reopened) and show a **"A new version of the app is available — Refresh"** bar when it changed.
 
-**Deploys from GitHub** (`deploy.ps1`, see [section 2](#2-running-the-project)):
-
-| Command | What it does |
-|---|---|
-| `.\deploy.ps1` | Builds the latest `main` from GitHub and restarts the stack |
-| `.\deploy.ps1 -Branch <name>` | Same, for another pushed branch |
-| `.\deploy.ps1 -Preview -Branch <name>` | Builds only that branch's screens and serves them on port 8080, using the live backend |
-| `.\deploy.ps1 -StopPreview` | Removes the preview |
-| `.\deploy.ps1 -Auto` | Deploys `main` only if it changed since the last deploy (used by the scheduled task) |
-| `.\install-autodeploy.ps1` / `-Remove` | Turns automatic deploys (every 5 minutes) on or off |
+**Deploys from GitHub** with `deploy.ps1`: the routine, all commands, previews, automatic deploys and rolling back are in [Deploying](#deploying-putting-changes-live).
 
 The script works in `.deploy\live` and `.deploy\preview` (git worktrees, ignored by git), so it never changes your working folder. It keeps the Compose project name `backend`, so containers, the database and the AI model are reused. Each step is checked; failures are written to `.deploy\deploy.log` and leave the running app as it was.
 
@@ -588,6 +669,7 @@ All changes are applied automatically when the backend starts:
 
 | File | Status | What changed |
 |---|---|---|
+| `README.md` | **new** | This document (replaces the earlier `CHANGES.md`) |
 | `deploy.ps1` | **new** | Deploys from GitHub; previews; automatic mode |
 | `install-autodeploy.ps1` | **new** | Turns automatic deploys on or off (Windows scheduled task) |
 | `.gitignore` | changed | Ignores `.deploy/` |
