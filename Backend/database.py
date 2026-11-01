@@ -2,10 +2,35 @@ import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg://postgres:caic123@database.nyala-ordinal.ts.net:5432/caic_db"
-)
+
+def _load_env_file() -> None:
+    """Reads Backend/.env (KEY=value lines) when the backend is run by hand on a laptop.
+    Real environment variables win. In Docker the values come from docker-compose.yml instead,
+    and .env is never copied into the image."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8-sig") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            value = value.strip().strip('"').strip("'")
+            if value:
+                os.environ.setdefault(key.strip(), value)
+
+
+_load_env_file()
+
+# The database address and password are never written in the code: they come from
+# Backend/.env (see .env.example) or, in Docker, from docker-compose.yml.
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Put it in Backend/.env (see Backend/.env.example), e.g. "
+        "DATABASE_URL=postgresql+psycopg://postgres:<password>@database.nyala-ordinal.ts.net:5432/caic_db_test"
+    )
 
 
 def ensure_database_exists(db_url: str):
@@ -108,9 +133,10 @@ def init_db():
                 admin_user = models.User(
                     username="admin",
                     name="System Superadmin",
-                    hashed_password=get_password_hash("admin123"),
+                    hashed_password=get_password_hash(INITIAL_ADMIN_PASSWORD),
                     is_active=True,
                     is_superuser=True,
+                    must_change_password=True,  # the first sign-in has to pick a new password
                 )
                 db.add(admin_user)
                 db.flush()
@@ -119,10 +145,46 @@ def init_db():
                     entity_id=admin_user.id, summary="Created default superadmin 'admin'",
                 ))
                 db.commit()
-                print("--> Default Superadmin account seeded: admin / admin123")
+                print("--> Default superadmin 'admin' created; it must change its password at first sign-in")
     except Exception as e:
         db.rollback()
         print(f"Error seeding default superadmin: {e}")
+    finally:
+        db.close()
+
+
+# Password for the first admin account. Set ADMIN_INITIAL_PASSWORD in Backend/.env to use
+# your own; either way the account has to change it at its first sign-in.
+INITIAL_ADMIN_PASSWORD = os.getenv("ADMIN_INITIAL_PASSWORD", "").strip() or "admin123"
+_KNOWN_PASSWORDS = ("admin123", "admin", "password", "12345678", "caic123")
+
+
+def flag_default_passwords() -> None:
+    """At startup: any admin account (or account named 'admin') still using a well-known
+    password, such as the original admin123, must change it at its next sign-in. Only these
+    few accounts are checked, because checking a password is deliberately slow."""
+    import models
+    from security import verify_password
+
+    db = SessionLocal()
+    try:
+        users = (
+            db.query(models.User)
+            .filter(
+                models.User.is_active.is_(True),
+                models.User.must_change_password.is_(False),
+                (models.User.is_superuser.is_(True)) | (models.User.username == "admin"),
+            )
+            .all()
+        )
+        for user in users:
+            if any(verify_password(p, user.hashed_password) for p in _KNOWN_PASSWORDS):
+                user.must_change_password = True
+                print(f"--> '{user.username}' uses a well-known password; it must be changed at next sign-in")
+        db.commit()
+    except Exception as e:  # never stop the server over this check
+        db.rollback()
+        print(f"[startup] default-password check skipped: {e!r}")
     finally:
         db.close()
 

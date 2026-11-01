@@ -1,3 +1,4 @@
+import math
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -6,6 +7,7 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import database
@@ -23,6 +25,13 @@ if len(SECRET_KEY) < 32:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+# Sign-in protection: after this many wrong passwords for one username, that username can't
+# sign in for LOGIN_LOCK_MINUTES (counted from the oldest of those wrong tries). A successful
+# sign-in starts the count again. Uses the login_failed rows already in the Activity Log, so it
+# works the same across all backend processes.
+LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
+LOGIN_LOCK_MINUTES = int(os.getenv("LOGIN_LOCK_MINUTES", "15"))
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
@@ -36,6 +45,39 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     password_bytes = plain_password.encode("utf-8")[:72]
     hashed_bytes = hashed_password.encode("utf-8")
     return bcrypt.checkpw(password_bytes, hashed_bytes)
+
+
+def login_locked_minutes(db: Session, username: str) -> int:
+    """Minutes until this username may try again after too many wrong passwords, else 0."""
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(minutes=LOGIN_LOCK_MINUTES)
+    last_ok = (
+        db.query(func.max(models.ActivityLog.created_at))
+        .filter(models.ActivityLog.actor == username, models.ActivityLog.action == "login")
+        .scalar()
+    )
+    if last_ok is not None:
+        if last_ok.tzinfo is None:
+            last_ok = last_ok.replace(tzinfo=timezone.utc)
+        since = max(since, last_ok)
+    recent = (
+        db.query(models.ActivityLog.created_at)
+        .filter(
+            models.ActivityLog.actor == username,
+            models.ActivityLog.action == "login_failed",
+            models.ActivityLog.created_at > since,
+        )
+        .order_by(models.ActivityLog.created_at.desc())
+        .limit(LOGIN_MAX_FAILURES)
+        .all()
+    )
+    if len(recent) < LOGIN_MAX_FAILURES:
+        return 0
+    oldest = recent[-1][0]
+    if oldest.tzinfo is None:
+        oldest = oldest.replace(tzinfo=timezone.utc)
+    seconds = (oldest + timedelta(minutes=LOGIN_LOCK_MINUTES) - now).total_seconds()
+    return max(1, math.ceil(seconds / 60)) if seconds > 0 else 0
 
 
 def get_password_hash(password: str) -> str:

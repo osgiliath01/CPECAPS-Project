@@ -94,8 +94,17 @@ The version in use is shown at the bottom of the user menu and on the sign-in pa
 
 - **Tailscale:** `database.nyala-ordinal.ts.net` is a **Tailscale Service** (`svc:database`) that forwards to the server. It must forward ports **80** (app), **8000** (backend, for developers), **5432** (database) and, if you use previews, **8080**. For each port: allow `tcp:<port>` on the service in the Tailscale admin console, then run `tailscale serve --service=svc:database --tcp=<port> tcp://127.0.0.1:<port>`. Check with `tailscale serve status`.
 - **First deploy:** clone the repository, then run `.\deploy.ps1` (see [Deploying](#deploying-putting-changes-live)). If Windows says scripts are disabled, run once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-- **Secret key:** copy `Backend\.env.example` to `Backend\.env` and set `JWT_SECRET_KEY` to a long random value (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). It signs sign-in tokens, so anyone who has it could sign in as any account: never commit it or paste it in chat. `Backend\.env` is ignored by Git, `deploy.ps1` stops if it's missing, and changing the key signs everyone out once.
-- **Default admin:** `docker compose -p backend exec api python main.py` (sign in as `admin` / `admin123`, then change the password).
+- **Secrets (`Backend\.env`):** copy `Backend\.env.example` to `Backend\.env` and fill in `JWT_SECRET_KEY` and `POSTGRES_PASSWORD` with long random values (`python -c "import secrets; print(secrets.token_hex(24))"`). `Backend\.env` is ignored by Git and never copied into an image; `deploy.ps1` passes it to Docker and stops if it's missing. Never commit these values or paste them in chat.
+  - `JWT_SECRET_KEY` signs sign-in tokens: anyone who has it could sign in as any account. Changing it signs everyone out once.
+  - `POSTGRES_PASSWORD` is only applied when the database is **first created**. To change it on an existing database, change it in the database first, then deploy straight away (the backend can't connect in between):
+    ```powershell
+    $pw = (Select-String -Path Backend\.env -Pattern '^POSTGRES_PASSWORD=(.*)$').Matches[0].Groups[1].Value
+    docker exec postgres-db psql -U postgres -c "ALTER USER postgres PASSWORD '$pw';"
+    .\deploy.ps1 -Branch <branch>
+    ```
+    Developers who connect to the database (their own backend, pgAdmin) need the new password too.
+- **Default admin:** `docker compose -p backend exec api python main.py` creates `admin` with password `ADMIN_INITIAL_PASSWORD` from `Backend\.env` (or `admin123` if unset). It **must be changed at the first sign-in**. At every start, any admin still using a well-known password (`admin123`, `admin`, `password`, …) is also made to change it.
+- **Sign-in protection:** after **5 wrong passwords** for one username, that username is refused for **15 minutes** ("Too many wrong passwords…"); a successful sign-in resets the count. Blocked tries aren't logged, so they can't flood the Activity Log. Change the numbers with `LOGIN_MAX_FAILURES` / `LOGIN_LOCK_MINUTES`. Note that anyone who knows a username can lock it for 15 minutes this way; the owner can wait or use **Forgot password**.
 - **AI model** (about 2.5 GB): `docker compose -p backend exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M`
 - **GPU:** the `ollama` service is set up for an **NVIDIA GPU** (see [4.14](#414-assistant-local-ai-model)). On a machine without one, delete the `reservations:` block under `ollama` in `Backend/docker-compose.yml` (and push), or that container won't start.
 - **Port 80** must be free on the server. If another program uses it, change `"0.0.0.0:80:80"` under `web` to e.g. `"0.0.0.0:8081:80"` and use that port in the address.
@@ -164,7 +173,8 @@ Run your own backend locally against a **test database**, never the real one: a 
 ```powershell
 cd Backend
 ..\venv\Scripts\activate
-$env:DATABASE_URL = "postgresql+psycopg://postgres:caic123@database.nyala-ordinal.ts.net:5432/caic_db_test"
+# Backend\.env (copy .env.example) holds DATABASE_URL for caic_db_test with the database
+# password (ask the server owner); the backend reads it by itself
 python main.py                      # first time: creates caic_db_test, its tables and the admin
 uvicorn auth:app --reload --timeout-graceful-shutdown 3
 ```
@@ -257,7 +267,7 @@ Hiding buttons in the frontend is only for convenience. Calling an admin route d
 
 `database.init_db()` (run by `python main.py`) creates a default admin:
 
-- **Username / password:** `admin` / `admin123`. Change it right after the first sign-in.
+- **Username / password:** `admin` / the `ADMIN_INITIAL_PASSWORD` in `Backend\.env` (or `admin123` if unset). The first sign-in has to choose a new password, and any admin still using a well-known password is made to change it at the next start.
 - If an account named `admin` already exists but isn't an admin (for example, someone registered it through the app), it is **promoted** instead of causing a duplicate-username error.
 - Accounts made through **Create account** are always normal users.
 
@@ -869,13 +879,13 @@ These were found during the work but are not fixed yet:
 2. **Lint warnings that predate this update:** `Dashboard.jsx` (setState inside an effect, two places), `AdminMenu.jsx` (unused `initial` prop) and `App.jsx` (re-thrown error without `cause`). The app runs normally.
 3. **The root `requirements.txt` is saved as UTF-16** (from PowerShell's `>`), and includes Windows-only packages. The shared backend uses `Backend/requirements.txt` instead. To fix the root one, regenerate it as UTF-8:
    `pip freeze | Out-File -Encoding utf8 requirements.txt`
-4. **Secrets are hard-coded:** `SECRET_KEY` in `security.py` and the database password in `database.py`/`docker-compose.yml`. Move them to environment variables before deploying.
+4. **Secrets:** the token key and database password are no longer in the code; they live in `Backend\.env` on the server (see [Server setup](#server-setup-first-time-only)). The old values are still in Git history but no longer work once the server uses the new ones.
 5. **CORS allows every origin** (`allow_origins=["*"]`). Restrict it to the real frontend address before deploying.
 6. **Line endings:** files use Windows (CRLF) endings, so git may show whole files as changed. `git config core.autocrlf true` avoids this.
 7. **Assistant limits:** it runs `qwen3:4b-instruct-2507-q4_K_M`, a small model. The safety net makes sure the right records are looked up, but the wording can still be off, so test it with a set of questions whose answers you know before relying on it. It answers one question at a time, so simultaneous users wait in turn. On a 4 GB GPU part of the model may run on the CPU, which is slower.
 8. **Single-admin lockout:** an admin can't approve their own password reset. If the only admin forgets their password, reset it on the server, from the `Backend` folder:
    ```powershell
-   docker compose exec api python -c "import database, models, security; db = database.SessionLocal(); u = db.query(models.User).filter_by(username='admin').first(); u.hashed_password = security.get_password_hash('admin123'); db.commit()"
+   docker compose -p backend exec api python -c "import database, models, security; db = database.SessionLocal(); u = db.query(models.User).filter_by(username='admin').first(); u.hashed_password = security.get_password_hash('admin123'); u.must_change_password = True; db.commit()"
    ```
 9. **GPU setting is machine-specific:** the `reservations:` block for the `ollama` service only works on machines with an NVIDIA GPU and its driver. Remove it on other machines, including the client's server if it has no NVIDIA GPU.
 10. **The server is a laptop:** the shared link, deploys and automatic deploys only work while it's on, awake, signed in, running Docker Desktop and connected to Tailscale. For the client, use an always-on server.

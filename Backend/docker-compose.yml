@@ -3,7 +3,8 @@ x-backend-env: &backend-env
   # Signs sign-in tokens. Kept in Backend/.env (not committed); see .env.example
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in Backend/.env (copy Backend/.env.example)}
   # "db" is the database container below; the backend reaches it inside Docker
-  DATABASE_URL: postgresql+psycopg://postgres:caic123@db:5432/caic_db
+  DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Backend/.env}@db:5432/caic_db
+  ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
   # The assistant's model server and model (see the ollama service below and chatbot.py)
   OLLAMA_HOST: http://ollama:11434
   OLLAMA_MODEL: qwen3:4b-instruct-2507-q4_K_M
@@ -19,7 +20,8 @@ services:
     command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: caic123
+      # Only used when the database is first created. To change it later, see README (Secrets)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Backend/.env}
       POSTGRES_DB: caic_db
     ports:
       - "0.0.0.0:5432:5432"

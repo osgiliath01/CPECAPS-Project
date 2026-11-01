@@ -5,7 +5,7 @@
 3. The user signs in with it and must set a new password before using the app.
 """
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -103,9 +103,19 @@ def request_password_reset(payload: ResetRequestCreate, db: Session = Depends(da
                          {"message": message} if message else None)
             db.commit()
     else:
-        activity.log(db, username[:255] or "?", "reset_requested",
-                     f"Password reset asked for unknown or inactive username '{username[:100]}'", "user")
-        db.commit()
+        # Logged at most once an hour per username, so repeated tries can't flood the Activity Log
+        hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        already = (
+            db.query(models.ActivityLog.id)
+            .filter(models.ActivityLog.actor == (username[:255] or "?"),
+                    models.ActivityLog.action == "reset_requested",
+                    models.ActivityLog.created_at > hour_ago)
+            .first()
+        )
+        if not already:
+            activity.log(db, username[:255] or "?", "reset_requested",
+                         f"Password reset asked for unknown or inactive username '{username[:100]}'", "user")
+            db.commit()
 
     return {"detail": "If that account exists, an admin will review your request and give you a temporary password."}
 

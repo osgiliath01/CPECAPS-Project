@@ -25,6 +25,7 @@ import chatbot
 # Create database tables automatically, then add any new columns to existing tables
 models.Base.metadata.create_all(bind=database.engine)
 database.ensure_schema()
+database.flag_default_passwords()
 
 # Deletes anything archived more than 30 days ago. Runs at startup, then every hour.
 PURGE_EVERY_SECONDS = 60 * 60
@@ -112,6 +113,16 @@ def login_for_access_token(
     db: Session = Depends(database.get_db),
 ):
     """OAuth2 compatible token login, returns a JWT access token for Swagger UI and clients."""
+    # Too many wrong passwords lately: refuse before even checking this one. Not logged, so
+    # someone hammering the sign-in page can't flood the Activity Log.
+    locked = security.login_locked_minutes(db, form_data.username[:255])
+    if locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many wrong passwords for this account. Try again in {locked} "
+                   f"minute{'s' if locked != 1 else ''}, or use Forgot password.",
+            headers={"Retry-After": str(locked * 60)},
+        )
     user = crud.authenticate_user(
         db, username=form_data.username, password=form_data.password
     )
