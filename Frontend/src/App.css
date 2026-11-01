@@ -157,6 +157,19 @@ button { cursor: pointer; }
 .dropdown button { background: transparent; border: 0; text-align: left; padding: 0.7rem 0.9rem; border-radius: 0.6rem; }
 .dropdown button:hover { background: var(--pill); }
 
+/* Notification-style counter (pending requests) */
+.count-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.25rem; height: 1.25rem; padding: 0 0.35rem; margin-left: 0.45rem;
+  border-radius: 999px; background: #d93025; color: #fff;
+  font-size: 0.75rem; font-weight: 700; line-height: 1; vertical-align: middle;
+}
+.adminbtn { position: relative; }
+.count-badge.on-avatar {
+  position: absolute; left: 3.1rem; top: 0.9rem; margin: 0;
+  border: 2px solid #fff; box-sizing: content-box;
+}
+
 /* ---------- Main ---------- */
 .main { padding: 3rem 5.5rem 3rem; max-width: none; margin: 0 auto; }
 .page-head {

@@ -2,7 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import avatar from "../assets/default_user.jpg";
 import { versionLabel } from "../version";
 
-export default function AdminMenu({ user, initial, onPassword, onUsers, onActivity, onMyRequests, onLogout }) {
+// Small red counter, like a notification badge. Nothing is shown when the count is 0.
+export function CountBadge({ count, label = "pending", className = "" }) {
+  if (!count) return null;
+  return (
+    <span className={`count-badge ${className}`} aria-label={`${count} ${label}`}>
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+export default function AdminMenu({
+  user,
+  initial,
+  onPassword,
+  onUsers,
+  onActivity,
+  onMyRequests,
+  onLogout,
+  pendingCount = 0,
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -29,6 +48,9 @@ export default function AdminMenu({ user, initial, onPassword, onUsers, onActivi
         onClick={() => setOpen((o) => !o)}
       >
         <img src={avatar} alt="" className="avatar-img" />
+        {user.is_superuser && (
+          <CountBadge count={pendingCount} label="pending requests" className="on-avatar" />
+        )}
         <span className="adminname">{user.is_superuser ? "Admin" : user.name}</span>
         <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
           <path d="m5 9 7 7 7-7" fill="none" stroke="currentColor" strokeWidth="1.8" />
@@ -49,6 +71,7 @@ export default function AdminMenu({ user, initial, onPassword, onUsers, onActivi
               }}
             >
               Activity Log
+              <CountBadge count={pendingCount} label="pending requests" />
             </button>
           )}
           {!user.is_superuser && onMyRequests && (

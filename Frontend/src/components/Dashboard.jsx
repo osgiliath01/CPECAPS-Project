@@ -37,6 +37,7 @@ export default function Dashboard({ api, user, onLogout }) {
   const [toast, setToast] = useState("");
   const [liveStatus, setLiveStatus] = useState("connecting");
   const [liveVersion, setLiveVersion] = useState(0); // bumps on every change, so open windows reload
+  const [pending, setPending] = useState({ requests: 0, resets: 0 }); // admins: badge counts
   const reqId = useRef(0);
 
   const loadEntries = useCallback(async () => {
@@ -98,6 +99,21 @@ export default function Dashboard({ api, user, onLogout }) {
   }, [toast]);
 
   const refresh = () => Promise.all([loadEntries(), fetchSummary(view)]);
+
+  // Admins: how many archive/edit requests and password resets are waiting. New requests,
+  // approvals and rejections all arrive as live updates, so this refreshes on its own.
+  useEffect(() => {
+    if (!user.is_superuser || !api.listRequests) return;
+    let cancelled = false;
+    Promise.all([api.listRequests("pending"), api.listResetRequests("pending")])
+      .then(([requests, resets]) => {
+        if (!cancelled) setPending({ requests: requests.length, resets: resets.length });
+      })
+      .catch(() => {}); // the badge is a hint; never show an error for it
+    return () => {
+      cancelled = true;
+    };
+  }, [api, user.is_superuser, liveVersion]);
 
   // Live updates: when anyone changes something, reload what's on screen
   const refreshRef = useRef(refresh);
@@ -277,6 +293,7 @@ export default function Dashboard({ api, user, onLogout }) {
             user={user}
             initial={initial}
             onActivity={() => setReviewOpen(true)}
+            pendingCount={pending.requests + pending.resets}
             onMyRequests={() => setMyRequestsOpen(true)}
             onPassword={() => setPwOpen(true)}
             onUsers={() => setUsersOpen(true)}
@@ -394,6 +411,7 @@ export default function Dashboard({ api, user, onLogout }) {
           version={liveVersion}
           api={api}
           user={user}
+          pending={pending}
           onClose={() => setReviewOpen(false)}
           onChanged={(msg) => { setToast(msg); refresh(); }}
         />

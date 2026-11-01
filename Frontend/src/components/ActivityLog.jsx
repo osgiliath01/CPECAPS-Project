@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fmtDate, fmtStamp, money } from "../utils/format";
 import DeletionRequests from "./DeletionRequests";
 import PasswordResets from "./PasswordResets";
+import { CountBadge } from "./AdminMenu";
 
 const TABS = [
   { key: "activity", label: "Activity" },
@@ -301,9 +302,13 @@ function ArchivedTab({ api, version, onChanged }) {
 }
 
 // Admin-only window: Activity, Archived entries and pending Archive requests.
-export default function ActivityLog({ api, user, version, onClose, onChanged }) {
+export default function ActivityLog({ api, user, version, pending, onClose, onChanged }) {
   const ref = useRef(null);
-  const [tab, setTab] = useState("activity");
+  // Open on whatever is waiting for the admin, otherwise on the activity list
+  const [tab, setTab] = useState(() =>
+    pending?.requests ? "requests" : pending?.resets ? "resets" : "activity"
+  );
+  const counts = { requests: pending?.requests, resets: pending?.resets };
 
   useEffect(() => {
     const d = ref.current;
@@ -324,6 +329,7 @@ export default function ActivityLog({ api, user, version, onClose, onChanged }) 
             onClick={() => setTab(t.key)}
           >
             {t.label}
+            <CountBadge count={counts[t.key]} />
           </button>
         ))}
       </div>
