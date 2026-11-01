@@ -13,7 +13,7 @@ export const isDevBuild = APP_VERSION.commit === "dev";
 
 export function versionLabel() {
   if (isDevBuild) return "Development build";
-  const { version, commit, branch } = APP_VERSION;
-  const where = branch && branch !== "main" ? ` · ${branch}` : "";
-  return `Version ${version} · ${commit}${where}`;
+  // The branch isn't shown on screen; it's still in /version.json for troubleshooting
+  const { version, commit } = APP_VERSION;
+  return `Version ${version} · ${commit}`;
 }
