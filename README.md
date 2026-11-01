@@ -311,6 +311,17 @@ Entries are no longer erased when "deleted":
 - Admins restore entries in **Activity Log → Archived → Entries**.
 - The old hard-delete function in `crud.py` was removed, so nothing in the code can erase an entry directly. Only the 30-day purge removes data (see 4.6).
 
+### 4.4a Several at once, and deleting archived items now
+
+- **Tick several entries** in *Summary of Expenses* (checkbox column, with "all on this page" in the header; ticks survive paging). A bar shows *"3 entries selected"*:
+  - **Admins: Archive selected.** Optional reason. Each entry is archived and logged as if done one by one, and pending requests on those entries are closed.
+  - **Staff: Request archive.** A reason is required. One request per entry goes to the admins; entries that already have a pending request are skipped.
+- **Tick several projects** in *Voucher Control* (admins): **Archive selected** archives each with all its entries. The confirmation lists them and the number of entries.
+- **Activity Log > Archived** (admins): tick projects or entries, then **Restore selected** or **Delete permanently**. Each row also has **Restore** and **Delete**.
+  - **Delete permanently** erases the items now instead of after 30 days (a project together with all its entries). It can't be undone: you have to type **DELETE** to confirm. The Activity Log keeps a full copy of what was deleted (*Deleted permanently (by admin)*). Only archived items can be deleted.
+- Items that can't be done (already archived, not found, project still archived...) are skipped. The message says how many went through and why the rest were skipped, e.g. *"5 entries archived. 1 skipped: CV# A1 is already archived."*
+- API (`bulk.py`): `POST /disbursements/bulk-archive`, `/disbursements/bulk-archive-request`, `/projects/bulk-archive`, `/archived/restore`, `/archived/delete`. Up to 500 items per call. The 30-day purge and the single-item restore routes use the same code (`activity.py`).
+
 ### 4.5 Project archiving
 
 - Admins see an **Archive** button on each project in Voucher Control. The confirmation states how many entries and how much money go with it.

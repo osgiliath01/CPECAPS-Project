@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cents, money } from "../utils/format";
 import ConfirmDialog from "./ConfirmDialog";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "./Pagination";
+import { plural, useSelection } from "../hooks/useSelection";
+import { SelectAll, SelectOne, SelectionBar } from "./Selection";
 
 const COLUMNS = [
   { key: "project_title", label: "PROJECT TITLE" },
@@ -39,11 +41,39 @@ function groupByProject(entries, projects = []) {
   return [...map.values()];
 }
 
-export default function VoucherControl({ entries, projects, loading, q, fields, isAdmin, onNew, onView, onArchiveProject, onImport }) {
+export default function VoucherControl({
+  entries,
+  projects,
+  loading,
+  q,
+  fields,
+  isAdmin,
+  onNew,
+  onView,
+  onArchiveProject,
+  onBulkArchiveProjects,
+  onImport,
+}) {
   const [sort, setSort] = useState({ key: "project_title", dir: "asc" });
   const [toDelete, setToDelete] = useState(null);
+  // Admins: ticked projects, to archive several at once (by project id)
+  const selection = useSelection();
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const grouped = useMemo(() => groupByProject(entries, projects), [entries, projects]);
+  useEffect(() => {
+    selection.keepOnly(grouped.filter((p) => p.id != null).map((p) => p.id));
+  }, [grouped]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen = grouped.filter((p) => p.id != null && selection.has(p.id));
+
+  async function runBulk() {
+    setBulkBusy(true);
+    const ok = await onBulkArchiveProjects(selection.list());
+    setBulkBusy(false);
+    setBulkOpen(false);
+    if (ok) selection.clear();
+  }
 
     const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -109,9 +139,24 @@ export default function VoucherControl({ entries, projects, loading, q, fields, 
       </div>
 
       <section className="panel" aria-label="Projects">
+        {isAdmin && (
+          <SelectionBar selection={selection} noun="project">
+            <button type="button" className="pill sm danger" onClick={() => setBulkOpen(true)}>
+              Archive selected
+            </button>
+          </SelectionBar>
+        )}
         <table className="vtable">
           <thead>
             <tr>
+              {isAdmin && (
+                <th scope="col" className="col-select">
+                  <SelectAll
+                    pageIds={pg.pageItems.filter((p) => p.id != null).map((p) => p.id)}
+                    selection={selection}
+                  />
+                </th>
+              )}
               {COLUMNS.map((c) => (
                 <th key={c.key} scope="col" aria-sort={ariaSort(c.key)} className={`col-${c.key}`}>
                   <button className="th-btn" onClick={() => toggleSort(c.key)}>
@@ -127,7 +172,14 @@ export default function VoucherControl({ entries, projects, loading, q, fields, 
           </thead>
           <tbody>
             {pg.pageItems.map((p) => (
-              <tr key={p.project_title}>
+              <tr key={p.project_title} className={p.id != null && selection.has(p.id) ? "row-ticked" : undefined}>
+                {isAdmin && (
+                  <td className="select-cell">
+                    {p.id != null && (
+                      <SelectOne id={p.id} selection={selection} label={`Select ${p.project_title}`} />
+                    )}
+                  </td>
+                )}
                 <td>{p.project_title}</td>
                 <td className="amount">{money(p.total / 100)}</td>
                 <td className="actions">
@@ -160,6 +212,28 @@ export default function VoucherControl({ entries, projects, loading, q, fields, 
           <p className="panel-msg">No projects match “{q}”.</p>
         )}
       </section>
+      {bulkOpen && (
+        <ConfirmDialog
+          title={`Archive ${plural(selection.count, "project")}?`}
+          confirmLabel={bulkBusy ? "Working…" : "Archive"}
+          confirmDisabled={bulkBusy}
+          onCancel={() => setBulkOpen(false)}
+          onConfirm={runBulk}
+        >
+          <p>
+            Each project is archived together with all its entries (
+            {chosen.reduce((n, p) => n + (p.entry_count || 0), 0)} in total). Pending requests on those entries are
+            closed. They can be restored from Activity Log → Archived within 30 days; after that they're deleted
+            permanently.
+          </p>
+          <ul className="bulk-list">
+            {chosen.slice(0, 8).map((p) => (
+              <li key={p.id}>{p.project_title}</li>
+            ))}
+            {chosen.length > 8 && <li className="muted">and {chosen.length - 8} more</li>}
+          </ul>
+        </ConfirmDialog>
+      )}
       {toDelete && (
         <ConfirmDialog
           title="Archive project?"

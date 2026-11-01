@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDate, fmtStamp, money } from "../utils/format";
 import DeletionRequests from "./DeletionRequests";
 import PasswordResets from "./PasswordResets";
 import { CountBadge } from "./AdminMenu";
 import Pagination from "./Pagination";
+import ConfirmDialog from "./ConfirmDialog";
+import { SelectAll, SelectOne, SelectionBar } from "./Selection";
+import { bulkMessage, plural, useSelection } from "../hooks/useSelection";
 
 const TABS = [
   { key: "activity", label: "Activity" },
@@ -33,6 +36,7 @@ const ACTIONS = [
   ["project_archive", "Archived project"],
   ["project_restore", "Restored project"],
   ["purge", "Deleted permanently"],
+  ["permanent_delete", "Deleted permanently (by admin)"],
   ["project_delete", "Deleted project"],
   ["register", "Registered"],
   ["account_approved", "Account approved"],
@@ -205,48 +209,72 @@ function ArchivedTab({ api, version, onChanged }) {
   const [projects, setProjects] = useState(null);
   const [entries, setEntries] = useState(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState("projects"); // "projects" | "entries"
+  // Ticked items, per list; and the permanent-delete confirmation ({ projects, entries } ids)
+  const pickedProjects = useSelection();
+  const pickedEntries = useSelection();
+  const [toErase, setToErase] = useState(null);
+  const [typed, setTyped] = useState("");
 
-  function fetchAll() {
-    return Promise.all([api.listArchivedProjects(), api.listArchived()]).then(([p, e]) => {
-      setProjects(withTimeLeft(p));
-      setEntries(withTimeLeft(e));
-      setError("");
-    });
-  }
-
-  useEffect(() => {
-    Promise.all([api.listArchivedProjects(), api.listArchived()]).then(
-      ([p, e]) => {
+  const fetchAll = useCallback(
+    () =>
+      Promise.all([api.listArchivedProjects(), api.listArchived()]).then(([p, e]) => {
         setProjects(withTimeLeft(p));
         setEntries(withTimeLeft(e));
-      },
-      (e) => setError(e.message)
-    );
-  }, [api, version]);
+        pickedProjects.keepOnly(p.map((x) => x.id));
+        pickedEntries.keepOnly(e.map((x) => x.id));
+        setError("");
+      }),
+    [api] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-  async function restore(kind, item) {
-    setBusy(`${kind}-${item.id}`);
+  useEffect(() => {
+    fetchAll().catch((e) => setError(e.message));
+  }, [fetchAll, version]);
+
+  const selection = kind === "projects" ? pickedProjects : pickedEntries;
+  const list = kind === "projects" ? projects : entries;
+  const noun = kind === "projects" ? "project" : "entry";
+  const asPayload = (ids) => (kind === "projects" ? { projects: ids, entries: [] } : { projects: [], entries: ids });
+
+  async function run(action, ids, verb) {
+    setBusy(true);
+    setError("");
     try {
-      if (kind === "project") await api.restoreProject(item.id);
-      else await api.restoreDisbursement(item.id);
+      const res = await action(asPayload(ids));
+      selection.clear();
       await fetchAll();
-      onChanged?.(kind === "project" ? "Project restored with its entries." : "Entry restored.");
+      onChanged?.(bulkMessage(res, noun, verb));
     } catch (e) {
       setError(e.message);
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
+
+  const restore = (ids) => run(api.restoreArchived, ids, kind === "projects" ? "restored with their entries" : "restored");
+  const askErase = (ids) => {
+    setTyped("");
+    setToErase(ids);
+  };
+  async function erase() {
+    const ids = toErase;
+    setToErase(null);
+    await run(api.deleteArchived, ids, "deleted permanently");
+  }
+
+  const erasing = toErase && list ? list.filter((x) => toErase.includes(x.id)) : [];
+  const erasingEntries =
+    kind === "projects" ? erasing.reduce((n, p) => n + (p.entry_count || 0), 0) : erasing.length;
 
   if (projects === null && !error) return <p className="muted">Loading…</p>;
 
   return (
     <>
       <p className="muted small archive-note">
-        Archived items can be restored for 30 days. After that they're deleted permanently, and only their
-        record in the Activity tab remains.
+        Archived items can be restored for 30 days, then they're deleted permanently. You can also delete them
+        permanently now. Either way, a copy stays in the Activity tab's record of the deletion.
       </p>
       {error && <p className="error">{error}</p>}
 
@@ -254,7 +282,7 @@ function ArchivedTab({ api, version, onChanged }) {
         {[
           ["projects", "Projects", projects],
           ["entries", "Entries", entries],
-        ].map(([key, label, list]) => (
+        ].map(([key, label, items]) => (
           <button
             key={key}
             type="button"
@@ -262,10 +290,19 @@ function ArchivedTab({ api, version, onChanged }) {
             aria-pressed={kind === key}
             onClick={() => setKind(key)}
           >
-            {label} <span className="seg-count">{list?.length ?? 0}</span>
+            {label} <span className="seg-count">{items?.length ?? 0}</span>
           </button>
         ))}
       </div>
+
+      <SelectionBar selection={selection} noun={noun}>
+        <button type="button" className="pill sm" disabled={busy} onClick={() => restore(selection.list())}>
+          Restore selected
+        </button>
+        <button type="button" className="pill sm danger" disabled={busy} onClick={() => askErase(selection.list())}>
+          Delete permanently
+        </button>
+      </SelectionBar>
 
       {kind === "projects" ? (
         projects?.length === 0 ? (
@@ -275,11 +312,19 @@ function ArchivedTab({ api, version, onChanged }) {
             <div className="review-scroll">
               <table className="review-table">
                 <thead>
-                  <tr><th>Project</th><th>Entries</th><th>Total</th><th>Archived</th><th>Deletes in</th><th /></tr>
+                  <tr>
+                    <th className="col-select">
+                      <SelectAll pageIds={projects.map((p) => p.id)} selection={pickedProjects} label="Select all archived projects" />
+                    </th>
+                    <th>Project</th><th>Entries</th><th>Total</th><th>Archived</th><th>Deletes in</th><th />
+                  </tr>
                 </thead>
                 <tbody>
                   {projects.map((p) => (
-                    <tr key={p.id}>
+                    <tr key={p.id} className={pickedProjects.has(p.id) ? "row-ticked" : undefined}>
+                      <td className="select-cell">
+                        <SelectOne id={p.id} selection={pickedProjects} label={`Select ${p.title}`} />
+                      </td>
                       <td><strong>{p.title}</strong></td>
                       <td>{p.entry_count}</td>
                       <td className="amount">{money(p.total_amount)}</td>
@@ -290,8 +335,11 @@ function ArchivedTab({ api, version, onChanged }) {
                       </td>
                       <td><TimeLeft item={p} /></td>
                       <td className="actions">
-                        <button className="pill sm" disabled={busy === `project-${p.id}`} onClick={() => restore("project", p)}>
+                        <button className="pill sm" disabled={busy} onClick={() => restore([p.id])}>
                           Restore
+                        </button>
+                        <button className="pill sm danger" disabled={busy} onClick={() => askErase([p.id])}>
+                          Delete
                         </button>
                       </td>
                     </tr>
@@ -308,11 +356,19 @@ function ArchivedTab({ api, version, onChanged }) {
           <div className="review-scroll">
             <table className="review-table">
               <thead>
-                <tr><th>Project</th><th>Date</th><th>CV#</th><th>Payee</th><th>Amount</th><th>Archived</th><th>Deletes in</th><th /></tr>
+                <tr>
+                  <th className="col-select">
+                    <SelectAll pageIds={entries.map((e) => e.id)} selection={pickedEntries} label="Select all archived entries" />
+                  </th>
+                  <th>Project</th><th>Date</th><th>CV#</th><th>Payee</th><th>Amount</th><th>Archived</th><th>Deletes in</th><th />
+                </tr>
               </thead>
               <tbody>
                 {entries.map((e) => (
-                  <tr key={e.id}>
+                  <tr key={e.id} className={pickedEntries.has(e.id) ? "row-ticked" : undefined}>
+                    <td className="select-cell">
+                      <SelectOne id={e.id} selection={pickedEntries} label={`Select CV# ${e.cv_no}`} />
+                    </td>
                     <td>{e.project_title}</td>
                     <td className="nowrap">{fmtDate(e.date)}</td>
                     <td>{e.cv_no}</td>
@@ -325,8 +381,11 @@ function ArchivedTab({ api, version, onChanged }) {
                     </td>
                     <td><TimeLeft item={e} /></td>
                     <td className="actions">
-                      <button className="pill sm" disabled={busy === `entry-${e.id}`} onClick={() => restore("entry", e)}>
+                      <button className="pill sm" disabled={busy} onClick={() => restore([e.id])}>
                         Restore
+                      </button>
+                      <button className="pill sm danger" disabled={busy} onClick={() => askErase([e.id])}>
+                        Delete
                       </button>
                     </td>
                   </tr>
@@ -335,6 +394,34 @@ function ArchivedTab({ api, version, onChanged }) {
             </table>
           </div>
         )
+      )}
+
+      {toErase && (
+        <ConfirmDialog
+          title={`Delete ${plural(toErase.length, noun)} permanently?`}
+          confirmLabel="Delete permanently"
+          confirmDisabled={typed.trim().toUpperCase() !== "DELETE"}
+          onCancel={() => setToErase(null)}
+          onConfirm={erase}
+        >
+          <p>
+            <strong>This can't be undone.</strong>{" "}
+            {kind === "projects"
+              ? `The ${plural(toErase.length, "project")} and all ${plural(erasingEntries, "entry")} in them will be erased now instead of after 30 days.`
+              : `The ${plural(toErase.length, "entry")} will be erased now instead of after 30 days.`}{" "}
+            A copy of what's deleted stays in the Activity Log.
+          </p>
+          <ul className="bulk-list">
+            {erasing.slice(0, 8).map((x) => (
+              <li key={x.id}>{kind === "projects" ? x.title : `CV# ${x.cv_no} · ${x.payee} · ${money(x.amount)}`}</li>
+            ))}
+            {erasing.length > 8 && <li className="muted">and {erasing.length - 8} more</li>}
+          </ul>
+          <label>
+            Type <strong>DELETE</strong> to confirm
+            <input value={typed} onChange={(ev) => setTyped(ev.target.value)} autoComplete="off" autoFocus />
+          </label>
+        </ConfirmDialog>
       )}
     </>
   );

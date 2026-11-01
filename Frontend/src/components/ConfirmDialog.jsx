@@ -6,6 +6,7 @@ export default function ConfirmDialog({
   confirmLabel = "Delete",
   onConfirm,
   onCancel,
+  confirmDisabled = false,
 }) {
   const ref = useRef(null);
 
@@ -29,7 +30,7 @@ export default function ConfirmDialog({
         <button type="button" className="pill" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="pill danger" onClick={onConfirm}>
+        <button type="button" className="pill danger" onClick={onConfirm} disabled={confirmDisabled}>
           {confirmLabel}
         </button>
       </div>

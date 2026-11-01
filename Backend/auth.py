@@ -24,6 +24,7 @@ import live
 import chatbot
 import profiles
 import sessions
+import bulk
 
 # Create database tables automatically, then add any new columns to existing tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -72,6 +73,7 @@ app.include_router(live.router)
 app.include_router(chatbot.router)
 app.include_router(profiles.router)
 app.include_router(sessions.router)
+app.include_router(bulk.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins during development

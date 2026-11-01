@@ -1,15 +1,48 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Avatar from "./Avatar";
 import { cents, fmtDate, fmtStamp, money } from "../utils/format";
 import ConfirmDialog from "./ConfirmDialog";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "./Pagination";
+import { plural, useSelection } from "../hooks/useSelection";
+import { SelectAll, SelectOne, SelectionBar } from "./Selection";
 
-export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, onNew, onEdit, onDelete, onRequestDelete }) {
+export default function SummaryOfExpenses({
+  api,
+  summary,
+  q,
+  isAdmin,
+  onBack,
+  onNew,
+  onEdit,
+  onDelete,
+  onRequestDelete,
+  onBulkArchive,
+  onBulkRequest,
+}) {
   const [sort, setSort] = useState({ key: "date", dir: "desc" });
   const [toDelete, setToDelete] = useState(null);
   const [reason, setReason] = useState("");
   const [exporting, setExporting] = useState(false);
+  // Ticked entries, for archiving (admins) or asking to archive (staff) several at once
+  const selection = useSelection();
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkReason, setBulkReason] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => {
+    selection.keepOnly(summary.entries.map((e) => e.id)); // entries archived meanwhile drop out
+  }, [summary]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function runBulk() {
+    const ids = selection.list();
+    const reason = bulkReason.trim();
+    if (!isAdmin && reason.length < 3) return;
+    setBulkBusy(true);
+    const ok = await (isAdmin ? onBulkArchive(ids, reason) : onBulkRequest(ids, reason));
+    setBulkBusy(false);
+    setBulkOpen(false);
+    if (ok) selection.clear();
+  }
   const [exportError, setExportError] = useState("");
 
   // Downloads every entry of this project (not just what the search shows) as an Excel file
@@ -105,9 +138,24 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
       )}
 
       <section className="panel" aria-label="Summary of expenses">
+        <SelectionBar selection={selection} noun="entry">
+          <button
+            type="button"
+            className="pill sm danger"
+            onClick={() => {
+              setBulkReason("");
+              setBulkOpen(true);
+            }}
+          >
+            {isAdmin ? "Archive selected" : "Request archive"}
+          </button>
+        </SelectionBar>
         <table className="vtable">
           <thead>
             <tr>
+              <th scope="col" className="col-select">
+                <SelectAll pageIds={pg.pageItems.map((e) => e.id)} selection={selection} />
+              </th>
               <th scope="col" aria-sort={ariaSort("date")}>
                 <button className="th-btn" onClick={() => toggleSort("date")}>
                   DATE{arrow("date")}
@@ -137,7 +185,10 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
           </thead>
           <tbody>
             {pg.pageItems.map((e) => (
-              <tr key={e.id}>
+              <tr key={e.id} className={selection.has(e.id) ? "row-ticked" : undefined}>
+                <td className="select-cell">
+                  <SelectOne id={e.id} selection={selection} label={`Select CV# ${e.cv_no}`} />
+                </td>
                 <td>{fmtDate(e.date)}</td>
                 <td>{e.cv_no}</td>
                 <td>{e.payee}</td>
@@ -170,7 +221,7 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row" colSpan={3}>
+              <th scope="row" colSpan={4}>
                 {filtered ? `Total of ${rows.length} shown` : "Total"}
               </th>
               <td className="amount">{money(shownTotal)}</td>
@@ -191,6 +242,32 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
           <p className="panel-msg">No entries match “{q}”.</p>
         )}
       </section>
+      {bulkOpen && (
+        <ConfirmDialog
+          title={isAdmin ? `Archive ${plural(selection.count, "entry")}?` : `Request archive of ${plural(selection.count, "entry")}?`}
+          confirmLabel={bulkBusy ? "Working…" : isAdmin ? "Archive" : "Send requests"}
+          confirmDisabled={bulkBusy || (!isAdmin && bulkReason.trim().length < 3)}
+          onCancel={() => setBulkOpen(false)}
+          onConfirm={runBulk}
+        >
+          <p>
+            {isAdmin
+              ? "They'll be removed from this project and its totals. An admin can restore them from Activity Log → Archived within 30 days; after that they're deleted permanently."
+              : "An admin will review a request for each entry. Entries that already have a pending request are skipped."}
+          </p>
+          <label>
+            {isAdmin ? "Reason (optional)" : "Reason"}
+            <textarea
+              value={bulkReason}
+              onChange={(ev) => setBulkReason(ev.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="e.g. Duplicates from the October import"
+              autoFocus
+            />
+          </label>
+        </ConfirmDialog>
+      )}
       {toDelete && (isAdmin ? (
         <ConfirmDialog
           title="Archive entry?"

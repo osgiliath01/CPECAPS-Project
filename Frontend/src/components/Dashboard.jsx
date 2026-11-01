@@ -11,6 +11,7 @@ import ImportDialog from "./ImportDialog";
 import logo from "../assets/logo.webp";
 import UserPanel from "./UserPanel";
 import LoginRequestDialog from "./LoginRequestDialog";
+import { bulkMessage } from "../hooks/useSelection";
 
 const FILTERS = [
   { key: "project_title", label: "Project Title" },
@@ -307,6 +308,24 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
     }
   }
 
+  // Several at once. Each returns true when it went through (so the ticks can be cleared).
+  async function bulk(action, noun, verb, reload) {
+    try {
+      const res = await action();
+      await reload();
+      setToast(bulkMessage(res, noun, verb));
+      return true;
+    } catch (e) {
+      setError(e.message);
+      return false;
+    }
+  }
+  const handleBulkArchive = (ids, reason) => bulk(() => api.bulkArchive(ids, reason), "entry", "archived", refresh);
+  const handleBulkRequest = (ids, reason) =>
+    bulk(() => api.bulkRequestArchive(ids, reason), "archive request", "sent to an admin", async () => {});
+  const handleBulkArchiveProjects = (ids) =>
+    bulk(() => api.bulkArchiveProjects(ids), "project", "archived with their entries", loadEntries);
+
   async function handleRequestDelete(entry, reason) {
     try {
       await api.requestDeletion(entry.id, reason);
@@ -431,6 +450,7 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
               onNew={() => setCreatingProject(true)}
               onView={(e) => setView(e.project_title)}
               onArchiveProject={handleArchiveProject}
+              onBulkArchiveProjects={handleBulkArchiveProjects}
               onImport={() => setImportOpen(true)}
             />
           ) : summary ? (
@@ -447,6 +467,8 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
               isAdmin={user.is_superuser}
               onDelete={handleDelete}
               onRequestDelete={handleRequestDelete}
+              onBulkArchive={handleBulkArchive}
+              onBulkRequest={handleBulkRequest}
             />
           ) : (
             <>

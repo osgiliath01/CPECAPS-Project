@@ -170,6 +170,13 @@ export function createApi(tokenSource, onUnauthorized) {
     createProject: (title) => call(ROUTES.projects, { method: "POST", body: { title } }),
     // Archives the project with all its entries (restorable for 30 days)
     archiveProject: (id) => call(`${ROUTES.projects}/${id}`, { method: "DELETE" }),
+    // Several at once: each returns { done, skipped: [reasons] }
+    bulkArchive: (ids, reason) => call("/disbursements/bulk-archive", { method: "POST", body: { ids, reason: reason || null } }),
+    bulkRequestArchive: (ids, reason) =>
+      call("/disbursements/bulk-archive-request", { method: "POST", body: { ids, reason } }),
+    bulkArchiveProjects: (ids) => call("/projects/bulk-archive", { method: "POST", body: { ids } }),
+    restoreArchived: (sel) => call("/archived/restore", { method: "POST", body: sel }),
+    deleteArchived: (sel) => call("/archived/delete", { method: "POST", body: sel }),
     listArchivedProjects: () => call(`${ROUTES.projects}/archived`),
     restoreProject: (id) => call(`${ROUTES.projects}/${id}/restore`, { method: "POST" }),
 

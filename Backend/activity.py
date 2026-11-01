@@ -167,6 +167,56 @@ def archive_project(db: Session, project: models.Project, user: models.User) -> 
         {"title": project.title, "entries": len(active), "total": plain(total)})
 
 
+def delete_entry_permanently(db: Session, d: models.Disbursement, actor: str, action: str, why: str) -> None:
+    """Erases an entry for good. The Activity Log keeps a full copy of it."""
+    log(db, actor, action, f"Permanently deleted {describe(d)} ({why})", "disbursement", d.id,
+        {"entry": snapshot(d), "archived_by": d.archived_by, "archived_at": plain(d.archived_at)})
+    db.delete(d)
+
+
+def delete_project_permanently(db: Session, p: models.Project, actor: str, action: str, why: str) -> int:
+    """Erases a project and all its entries for good (the Activity Log keeps a copy).
+    Returns how many rows went."""
+    entries = list(p.disbursements)
+    log(db, actor, action,
+        f"Permanently deleted project '{p.title}' and its {len(entries)} entr{'y' if len(entries) == 1 else 'ies'} ({why})",
+        "project", p.id,
+        {"title": p.title, "archived_by": p.archived_by, "archived_at": plain(p.archived_at),
+         "entries": [snapshot(d) for d in entries]})
+    for d in entries:
+        db.delete(d)
+    db.delete(p)
+    return 1 + len(entries)
+
+
+def restore_entry(db: Session, d: models.Disbursement, user: models.User) -> None:
+    """Brings an archived entry back. Raises ValueError with the reason if it can't."""
+    if not d.is_archived:
+        raise ValueError(f"CV# {d.cv_no} isn't archived.")
+    if d.project.is_archived:
+        raise ValueError(f"CV# {d.cv_no}: its project '{d.project.title}' is archived. Restore the project instead.")
+    _unarchive(d)
+    d.archived_with_project = False
+    log(db, user.username, "restore", f"Restored {describe(d)}", "disbursement", d.id, {"entry": snapshot(d)})
+
+
+def restore_project_items(db: Session, p: models.Project, user: models.User) -> int:
+    """Restores a project with the entries archived together with it. Returns how many entries."""
+    if not p.is_archived:
+        raise ValueError(f"Project '{p.title}' isn't archived.")
+    restored = 0
+    for d in p.disbursements:
+        if d.is_archived and d.archived_with_project:
+            _unarchive(d)
+            d.archived_with_project = False
+            restored += 1
+    _unarchive(p)
+    log(db, user.username, "project_restore",
+        f"Restored project '{p.title}' with {restored} entr{'y' if restored == 1 else 'ies'}",
+        "project", p.id, {"title": p.title, "entries": restored})
+    return restored
+
+
 def purge_expired(db: Session) -> int:
     """Permanently deletes everything archived more than RETENTION_DAYS ago.
     Each deletion is logged with a copy of what was removed. Returns how many rows went."""
@@ -179,17 +229,7 @@ def purge_expired(db: Session) -> int:
         .all()
     )
     for p in projects:
-        entries = list(p.disbursements)
-        log(db, "system", "purge",
-            f"Permanently deleted project '{p.title}' and its {len(entries)} entr{'y' if len(entries) == 1 else 'ies'} "
-            f"({RETENTION_DAYS} days after archiving)",
-            "project", p.id,
-            {"title": p.title, "archived_by": p.archived_by, "archived_at": plain(p.archived_at),
-             "entries": [snapshot(d) for d in entries]})
-        for d in entries:
-            db.delete(d)
-        db.delete(p)
-        removed += 1 + len(entries)
+        removed += delete_project_permanently(db, p, "system", "purge", f"{RETENTION_DAYS} days after archiving")
     db.flush()
 
     entries = (
@@ -198,11 +238,7 @@ def purge_expired(db: Session) -> int:
         .all()
     )
     for d in entries:
-        log(db, "system", "purge",
-            f"Permanently deleted {describe(d)} ({RETENTION_DAYS} days after archiving)",
-            "disbursement", d.id,
-            {"entry": snapshot(d), "archived_by": d.archived_by, "archived_at": plain(d.archived_at)})
-        db.delete(d)
+        delete_entry_permanently(db, d, "system", "purge", f"{RETENTION_DAYS} days after archiving")
         removed += 1
 
     db.commit()
@@ -363,16 +399,10 @@ def restore_disbursement(
     d = db.get(models.Disbursement, disbursement_id, with_for_update=True)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Disbursement log not found")
-    if not d.is_archived:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This entry isn't archived.")
-    if d.project.is_archived:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            f"Its project '{d.project.title}' is archived. Restore the project instead.")
-
-    _unarchive(d)
-    d.archived_with_project = False
-    log(db, current_user.username, "restore", f"Restored {describe(d)}",
-        "disbursement", d.id, {"entry": snapshot(d)})
+    try:
+        restore_entry(db, d, current_user)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     db.commit()
     return None
 
@@ -415,18 +445,9 @@ def restore_project(
     p = db.get(models.Project, project_id, with_for_update=True)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
-    if not p.is_archived:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project isn't archived.")
-
-    restored = 0
-    for d in p.disbursements:
-        if d.is_archived and d.archived_with_project:
-            _unarchive(d)
-            d.archived_with_project = False
-            restored += 1
-    _unarchive(p)
-    log(db, current_user.username, "project_restore",
-        f"Restored project '{p.title}' with {restored} entr{'y' if restored == 1 else 'ies'}",
-        "project", p.id, {"title": p.title, "entries": restored})
+    try:
+        restore_project_items(db, p, current_user)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     db.commit()
     return None
