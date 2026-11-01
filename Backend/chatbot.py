@@ -504,13 +504,14 @@ _GUIDE_COMMON = (
 _GUIDE_USER = (
     "- Edit an entry: click 'Request edit' on it; an admin approves or rejects the change.\n"
     "- Remove an entry: click 'Request archive' and give a reason; an admin decides.\n"
-    "- See what happened to your requests: 'My requests' in the top bar.\n"
+    "- See what happened to your requests: the menu at the top right > My requests.\n"
     "- Only admins can import files, archive projects or restore archived items.\n"
 )
 _GUIDE_ADMIN = (
     "- Edit or archive an entry directly with its Edit / Archive buttons; archive a whole project with Archive "
     "in Voucher Control. Archived items can be restored for 30 days (Activity Log > Archived), then they're "
     "deleted permanently.\n"
+    "- The Activity Log is in the menu at the top right (your name, or 'Admin').\n"
     "- Review staff requests and password resets: Activity Log > Requests / Password resets.\n"
     "- Import entries from a CSV: 'Import File' in Voucher Control.\n"
     "- Manage accounts (roles, deactivate, reset password, delete): the menu at the top right (your name, or 'Admin') > Manage users.\n"

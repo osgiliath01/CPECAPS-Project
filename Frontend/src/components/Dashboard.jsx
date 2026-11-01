@@ -273,18 +273,11 @@ export default function Dashboard({ api, user, onLogout }) {
           >
             {liveStatus === "live" ? "Live" : "Reconnecting…"}
           </span>
-          {user.is_superuser ? (
-            <button className="pill sm" onClick={() => setReviewOpen(true)}>
-              Activity Log
-            </button>
-          ) : (
-            <button className="pill sm" onClick={() => setMyRequestsOpen(true)}>
-              My requests
-            </button>
-          )}
           <AdminMenu
             user={user}
             initial={initial}
+            onActivity={() => setReviewOpen(true)}
+            onMyRequests={() => setMyRequestsOpen(true)}
             onPassword={() => setPwOpen(true)}
             onUsers={() => setUsersOpen(true)}
             onLogout={onLogout}

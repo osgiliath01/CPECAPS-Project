@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import avatar from "../assets/default_user.jpg";
 import { versionLabel } from "../version";
 
-export default function AdminMenu({ user, initial, onPassword, onUsers, onLogout }) {
+export default function AdminMenu({ user, initial, onPassword, onUsers, onActivity, onMyRequests, onLogout }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -40,6 +40,28 @@ export default function AdminMenu({ user, initial, onPassword, onUsers, onLogout
             {user.name}
             <span className="muted small"> @{user.username}</span>
           </p>
+          {user.is_superuser && onActivity && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onActivity();
+              }}
+            >
+              Activity Log
+            </button>
+          )}
+          {!user.is_superuser && onMyRequests && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onMyRequests();
+              }}
+            >
+              My requests
+            </button>
+          )}
           <button
             role="menuitem"
             onClick={() => {

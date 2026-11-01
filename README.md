@@ -231,7 +231,7 @@ There are two roles. A user's role is stored in `users.is_superuser`.
 | Edit an entry | Request only | ✓ directly |
 | Archive an entry | Request only | ✓ directly |
 | Archive / restore a project | — | ✓ |
-| See own requests and their outcome (**My requests**) | ✓ | — |
+| See own requests and their outcome (**My requests**, in the user menu) | ✓ | — |
 | Approve / reject requests (with an optional note) | — | ✓ (not their own) |
 | Approve / reject password resets | — | ✓ (not their own) |
 | Restore archived entries and projects | — | ✓ |
@@ -282,7 +282,7 @@ Normal users can't archive or edit entries directly. They send a request, and an
 - Approving an edit applies the new values and records the **requester** as the editor. Approving an archive archives the entry.
 - An admin can't review their own request (shown as "Yours").
 
-**Seeing the outcome (normal user), in My requests:**
+**Seeing the outcome (normal user), in My requests** (user menu at the top right)**:**
 
 - Lists every request they've sent: type, entry, what they asked, status (**Pending / Approved / Rejected**), the admin's note, who decided and when.
 
@@ -320,7 +320,7 @@ Entries are no longer erased when "deleted":
 
 ### 4.7 Activity Log
 
-An admin-only window (top-bar button **Activity Log**) with four tabs:
+An admin-only window (**Activity Log** in the user menu at the top right) with four tabs:
 
 | Tab | Contents |
 |---|---|
@@ -694,7 +694,7 @@ All changes are applied automatically when the backend starts:
 | `components/MyRequests.jsx` | **new** | Normal users' request history |
 | `components/PasswordResets.jsx` | **new** | Admin reset approvals with one-time password display |
 | `components/UsersDialog.jsx` | **new** | Manage users window |
-| `components/AdminMenu.jsx` | changed | **Manage users** menu item for admins |
+| `components/AdminMenu.jsx` | changed | User menu: **Activity Log** and **Manage users** for admins, **My requests** for normal users, and the version |
 | `components/ImportDialog.jsx` | **new** | Import window with preview |
 | `components/ChatWidget.jsx` | changed | Connected to the assistant, with streaming, Stop, New chat and Expand |
 | `components/ChatFormat.jsx` | **new** | Shows tables and **bold** in assistant answers |
