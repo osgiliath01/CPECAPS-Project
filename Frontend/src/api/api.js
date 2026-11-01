@@ -58,6 +58,14 @@ async function http(path, { method = "GET", body, form, upload, token } = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// When a token stops working, as milliseconds on this computer's clock (measured from when
+// it was received, so a computer clock that's off doesn't matter). null if unknown.
+export function tokenExpiresAt(token, receivedAt = Date.now()) {
+  const p = decodeToken(token || "");
+  if (!p?.exp) return null;
+  return p.iat ? receivedAt + (p.exp - p.iat) * 1000 : p.exp * 1000;
+}
+
 // The backend has no /users/me, so the session info comes from the JWT itself.
 function decodeToken(t) {
   try {
@@ -68,13 +76,16 @@ function decodeToken(t) {
   }
 }
 
-export function createApi(token, onUnauthorized) {
+// `tokenSource` is the token, or a function returning the current one: the app renews the
+// token while someone is active, and every call should use the newest.
+export function createApi(tokenSource, onUnauthorized) {
+  const currentToken = () => (typeof tokenSource === "function" ? tokenSource() : tokenSource);
   if (DEMO) return createMockApi();
   const call = async (path, opts = {}) => {
     try {
-      return await http(path, { ...opts, token });
+      return await http(path, { ...opts, token: currentToken() });
     } catch (e) {
-      if (e.status === 401 && token && onUnauthorized) onUnauthorized(e.message);
+      if (e.status === 401 && currentToken() && onUnauthorized) onUnauthorized(e.message);
       throw e;
     }
   };
@@ -88,7 +99,12 @@ export function createApi(token, onUnauthorized) {
     cancelLoginChallenge: (id, secret) =>
       http(`/auth/login-challenges/${id}/cancel`, { method: "POST", body: { secret } }).catch(() => {}),
     // Ends this device's session (best effort; never signs out because of an error)
-    endSession: () => (token ? http("/auth/logout", { method: "POST", token }).catch(() => {}) : Promise.resolve()),
+    endSession: () => {
+      const token = currentToken();
+      return token ? http("/auth/logout", { method: "POST", token }).catch(() => {}) : Promise.resolve();
+    },
+    // A fresh sign-in for someone who is still using the app (see hooks/useSessionKeepAlive.js)
+    refreshToken: () => call("/auth/refresh", { method: "POST" }),
     // The signed-in device: sign-ins from other devices waiting for an answer
     myLoginChallenges: () => call("/me/login-challenges"),
     allowLogin: (id) => call(`/me/login-challenges/${id}/allow`, { method: "POST" }),
@@ -98,7 +114,7 @@ export function createApi(token, onUnauthorized) {
     requestPasswordReset: (username, message) =>
       http("/auth/reset-request", { method: "POST", body: { username, message: message || null } }),
     me: async () => {
-      const payload = decodeToken(token);
+      const payload = decodeToken(currentToken());
       const expired = payload?.exp && payload.exp * 1000 < Date.now();
       if (!payload?.sub || expired) throw new ApiError("Your session has expired.", 401);
       return {
@@ -123,7 +139,7 @@ export function createApi(token, onUnauthorized) {
       let res;
       try {
         res = await fetch(`${API_URL}/projects/${encodeURIComponent(title)}/export`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${currentToken()}` },
         });
       } catch {
         throw new ApiError("Can't reach the server. Check your connection and that the API is running.", 0);
@@ -194,7 +210,7 @@ export function createApi(token, onUnauthorized) {
     // Pictures need the sign-in token, so they're fetched here and shown from a local copy
     avatarBlob: async (userId, version) => {
       const res = await fetch(`${API_URL}/avatars/${userId}?v=${encodeURIComponent(version || "")}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${currentToken()}` },
       });
       return res.ok ? res.blob() : null;
     },
@@ -229,7 +245,7 @@ export function createApi(token, onUnauthorized) {
       try {
         res = await fetch(`${API_URL}/chat`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          headers: { Authorization: `Bearer ${currentToken()}`, "Content-Type": "application/json" },
           body: JSON.stringify({ messages }),
           signal,
         });
@@ -271,7 +287,7 @@ export function createApi(token, onUnauthorized) {
     },
 
     // Live updates: returns a function that closes the connection
-    connectLive: (handlers) => connectLive(`${API_URL}/live`, token, handlers),
+    connectLive: (handlers) => connectLive(`${API_URL}/live`, currentToken, handlers),
 
     // Activity Log (admins only)
     listActivity: (params = {}) => {

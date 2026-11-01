@@ -7,6 +7,8 @@ x-backend-env: &backend-env
   ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
   # One signed-in device per account (sessions.py). Exempt usernames may sign in many times
   SINGLE_SESSION: ${SINGLE_SESSION:-true}
+  # Minutes without activity before a sign-in expires (renewed while the person is active)
+  SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-30}
   SINGLE_SESSION_EXEMPT: ${SINGLE_SESSION_EXEMPT:-}
   # The assistant's model server and model (see the ollama service below and chatbot.py)
   OLLAMA_HOST: http://ollama:11434

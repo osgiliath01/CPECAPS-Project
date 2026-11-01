@@ -31,7 +31,11 @@ export function connectLive(url, token, handlers) {
       controller = new AbortController();
       try {
         const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+          // `token` may be a function returning the newest token (it's renewed while active)
+          headers: {
+            Authorization: `Bearer ${typeof token === "function" ? token() : token}`,
+            Accept: "text/event-stream",
+          },
           signal: controller.signal,
           cache: "no-store",
         });

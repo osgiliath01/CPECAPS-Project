@@ -14,8 +14,10 @@ straight away. Instead:
 
 Signing out ends the session, so signing in elsewhere afterwards needs no approval.
 Usernames in SINGLE_SESSION_EXEMPT (e.g. load-test accounts) can be signed in many times."""
+import os
 import re
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -34,7 +36,9 @@ SESSION_STALE_SECONDS = 75   # no sign of life for this long: the device counts 
 TOUCH_SECONDS = 30           # how often an open live connection reports that the device is there
 CHALLENGE_SECONDS = 180      # how long a new device waits for an answer
 ABANDONED_SECONDS = 12       # the new device checks every 2 s; silent this long = it gave up (tab closed)
-TOKEN_MINUTES = 30
+# A sign-in lasts this long without activity. While the person is using the app, the app
+# renews it in the background (POST /auth/refresh), so only idle sessions expire.
+TOKEN_MINUTES = int(os.getenv("SESSION_IDLE_MINUTES", "30"))
 
 
 def _now() -> datetime:
@@ -69,6 +73,7 @@ def issue_token(user: models.User, sid: Optional[str]) -> str:
         "is_superuser": user.is_superuser,
         "must_change_password": user.must_change_password,
         "tv": user.token_version or 0,  # see "Sign out on all devices"
+        "iat": int(time.time()),        # issued at: lets the app time the session on its own clock
     }
     if sid:
         data["sid"] = sid
@@ -250,6 +255,19 @@ def deny_login(
     """Blocks the other device. This device stays signed in."""
     _decide(db, challenge_id, current_user, allow=False)
     return None
+
+
+@router.post("/auth/refresh")
+def refresh_token(
+    token: str = Depends(security.oauth2_scheme),
+    current_user: models.User = Depends(security.get_current_user_allow_temporary),
+):
+    """Swaps a sign-in that's still valid for a fresh one (same device session), so someone
+    who keeps using the app isn't signed out. The app calls it only after real activity
+    (clicks, typing, scrolling); an idle session is left to expire. An expired, replaced
+    or signed-out token is refused (401) like everywhere else."""
+    claims = security.token_claims(token)
+    return {"access_token": issue_token(current_user, claims.get("sid")), "token_type": "bearer"}
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)

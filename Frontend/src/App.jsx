@@ -1,15 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { createApi, DEMO } from "./api/api";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import ForcePasswordChange from "./components/ForcePasswordChange";
 import UpdateBanner from "./components/UpdateBanner";
+import { useSessionKeepAlive } from "./hooks/useSessionKeepAlive";
+
+const IDLE_SIGN_OUT = "You were signed out after 30 minutes without activity. Sign in again to continue.";
 
 export default function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem("token") || (DEMO ? "demo" : null));
   const [user, setUser] = useState(null);
   const [signedOutReason, setSignedOutReason] = useState(""); // shown on the sign-in page
+  // The api reads the newest token through this, so renewing the token in the background
+  // doesn't rebuild the api (which would reload every screen)
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+  const signedIn = !!token;
 
   // The session ended (expired, signed in elsewhere, deactivated...). Shows why, if known.
   const logout = useCallback((reason) => {
@@ -17,13 +25,16 @@ export default function App() {
     setToken(null);
     setUser(null);
     const text = typeof reason === "string" ? reason : "";
-    setSignedOutReason(text && !/could not validate/i.test(text) ? text : "");
+    // "Could not validate credentials" = the sign-in ran out (e.g. the computer was asleep)
+    setSignedOutReason(
+      !text ? "" : /could not validate/i.test(text) ? "Your session ended. Please sign in again." : text
+    );
   }, []);
 
-  const api = useMemo(() => createApi(token, logout), [token, logout]);
+  const api = useMemo(() => createApi(() => tokenRef.current, logout), [signedIn, logout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!token) return;
+    if (!signedIn) return;
     let live = true;
     api
       .me()
@@ -32,7 +43,22 @@ export default function App() {
     return () => {
       live = false;
     };
-  }, [token, api, logout]);
+  }, [signedIn, api, logout]);
+
+  // Renew the sign-in while the person is active; sign out after 30 idle minutes
+  const renewed = useCallback((fresh) => {
+    sessionStorage.setItem("token", fresh);
+    tokenRef.current = fresh;
+    setToken(fresh);
+  }, []);
+  const expired = useCallback(() => logout(IDLE_SIGN_OUT), [logout]);
+  const { warning: idleWarning, stay } = useSessionKeepAlive({
+    token,
+    api,
+    enabled: signedIn && !DEMO,
+    onRenewed: renewed,
+    onExpired: expired,
+  });
 
   // Signing out on purpose: end the session on the server too, so this account can be
   // signed in elsewhere straight away
@@ -88,6 +114,17 @@ export default function App() {
   return (
     <>
       {screen}
+      {idleWarning != null && (
+        <div className="idle-warning" role="alertdialog" aria-live="assertive">
+          <span>
+            You'll be signed out in {Math.floor(idleWarning / 60)}:{String(idleWarning % 60).padStart(2, "0")} because
+            there's been no activity.
+          </span>
+          <button type="button" className="pill sm primary" onClick={stay}>
+            Stay signed in
+          </button>
+        </div>
+      )}
       <UpdateBanner />
     </>
   );

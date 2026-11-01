@@ -529,6 +529,16 @@ Each account can be signed in on **one device (browser tab) at a time** (`sessio
 - **Logged** in the Activity Log: *Sign-in from another device*, *Other device allowed / blocked*, *Signed out*.
 - **Settings** (`Backend\.env`): `SINGLE_SESSION=false` turns the rule off. `SINGLE_SESSION_EXEMPT=loadtest,loadtestadmin` lists accounts it doesn't apply to: **the load test needs this**, since its simulated users share accounts.
 
+### 4.17a Signing out after inactivity
+
+A sign-in ends after **30 minutes without activity**, not 30 minutes after signing in.
+
+- **Activity** means clicks, taps, typing and scrolling. Live updates arriving on screen don't count, so a screen left open still times out.
+- **While someone is active**, the app swaps their sign-in for a fresh one in the background about every 5 minutes (`POST /auth/refresh`, `hooks/useSessionKeepAlive.js`). It keeps the same device session (4.17), and nothing on screen reloads.
+- **2 minutes before** an idle session ends, a bar at the bottom says *"You'll be signed out in 1:59…"* with **Stay signed in**. At the end, the sign-in page says *"You were signed out after 30 minutes without activity."*
+- **A computer that went to sleep** is signed out when it wakes, if more than 30 minutes have passed.
+- **Timing** uses each computer's own clock, measured from when the sign-in arrived, so a wrong clock doesn't matter. The length is set with `SESSION_IDLE_MINUTES` in `Backend\.env` (default 30).
+
 ### 4.18 Mobile view
 
 Below 640px wide (phones), the app switches layout (`App.css`, section *Phones*; checked at 390px and 360px):
