@@ -111,7 +111,7 @@ export default function DeletionRequests({ api, user, version, onChanged }) {
                     <td>
                       {!mine && (
                         <input
-                          className="note"
+                          className="review-note"
                           value={notes[r.id] ?? ""}
                           onChange={(e) => setNotes((n) => ({ ...n, [r.id]: e.target.value }))}
                           placeholder="Optional"

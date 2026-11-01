@@ -14,11 +14,8 @@ export function CountBadge({ count, label = "pending", className = "" }) {
 
 export default function AdminMenu({
   user,
-  initial,
-  onPassword,
-  onUsers,
-  onActivity,
-  onMyRequests,
+  onUserPanel,
+  onHome,
   onLogout,
   pendingCount = 0,
   accountsCount = 0,
@@ -65,51 +62,28 @@ export default function AdminMenu({
             {user.name}
             <span className="muted small"> @{user.username}</span>
           </p>
-          {user.is_superuser && onActivity && (
-            <button
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onActivity();
-              }}
-            >
-              Activity Log
-              <CountBadge count={pendingCount} label="pending requests" />
-            </button>
-          )}
-          {!user.is_superuser && onMyRequests && (
-            <button
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onMyRequests();
-              }}
-            >
-              My requests
-              <CountBadge count={pendingCount} label="new responses" />
-            </button>
-          )}
           <button
             role="menuitem"
             onClick={() => {
               setOpen(false);
-              onPassword();
+              onHome();
             }}
           >
-            Change password
+            Voucher Control
           </button>
-          {user.is_superuser && onUsers && (
-            <button
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onUsers();
-              }}
-            >
-              Manage users
-              <CountBadge count={accountsCount} label="new accounts waiting for approval" />
-            </button>
-          )}
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onUserPanel();
+            }}
+          >
+            User Panel
+            <CountBadge
+              count={pendingCount + accountsCount}
+              label={user.is_superuser ? "pending requests" : "new responses"}
+            />
+          </button>
           <button role="menuitem" onClick={onLogout}>
             Sign out
           </button>

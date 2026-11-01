@@ -1,19 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtStamp } from "../utils/format";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "./Pagination";
 import { EntryCell, RequestDetails, TypeBadge } from "./DeletionRequests";
 
 const STATUS_LABEL = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
+const STATUS_FILTERS = [
+  ["all", "All"],
+  ["pending", "Pending"],
+  ["approved", "Approved"],
+  ["rejected", "Rejected"],
+];
 
-// Normal users: their own archive and edit requests, and what the admin decided.
-export default function MyRequests({ api, version, onSeen, onClose }) {
-  const ref = useRef(null);
+export function MyRequestsContent({ api, version }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    const d = ref.current;
-    if (d && !d.open) d.showModal();
-  }, []);
+  const [status, setStatus] = useState("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -33,24 +35,63 @@ export default function MyRequests({ api, version, onSeen, onClose }) {
     };
   }, [api, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return (
-    <dialog ref={ref} className="dialog dialog-wide" onCancel={(e) => { e.preventDefault(); onClose(); }}>
-      <h2>My requests</h2>
-      <div className="log-body">
-        {error && <p className="error">{error}</p>}
-        {items === null && !error ? (
-          <p className="muted">Loading…</p>
-        ) : items?.length === 0 ? (
-          <p className="muted">You haven't sent any requests yet.</p>
+  const counts = useMemo(() => {
+    const c = { all: items?.length ?? 0, pending: 0, approved: 0, rejected: 0 };
+    for (const r of items ?? []) if (c[r.status] !== undefined) c[r.status] += 1;
+    return c;
+  }, [items]);
+
+  // The list after the status filter. Hooks must run on every render,
+  // so this is computed before the loading/empty checks below.
+  const shown = useMemo(() => {
+    if (!items) return [];
+    return status === "all" ? items : items.filter((r) => r.status === status);
+  }, [items, status]);
+
+  const pg = usePagination(shown, 10, status); // back to page 1 when the status filter changes
+
+  let body;
+  if (error) {
+    body = <p className="error">{error}</p>;
+  } else if (items === null) {
+    body = <p className="muted">Loading…</p>;
+  } else if (items.length === 0) {
+    body = <p className="muted">You haven't sent any requests yet.</p>;
+  } else {
+    body = (
+      <>
+        <div className="seg" role="group" aria-label="Filter by status">
+          {STATUS_FILTERS.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className="seg-btn"
+              aria-pressed={status === key}
+              onClick={() => setStatus(key)}
+            >
+              {label} <span className="seg-count">{counts[key]}</span>
+            </button>
+          ))}
+        </div>
+
+        {shown.length === 0 ? (
+          <p className="muted">No {status} requests.</p>
         ) : (
-          items && (
+          <>
             <div className="review-scroll">
               <table className="review-table">
                 <thead>
-                  <tr><th>Sent</th><th>Type</th><th>Entry</th><th>Request</th><th>Status</th><th>Admin's response</th></tr>
+                  <tr>
+                    <th>Sent</th>
+                    <th>Type</th>
+                    <th>Entry</th>
+                    <th>Request</th>
+                    <th>Status</th>
+                    <th>Admin's response</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {items.map((r) => (
+                  {pg.pageItems.map((r) => (
                     <tr
                       key={r.id}
                       className={r.status !== "pending" && r.requester_seen === false ? "row-new" : undefined}
@@ -64,7 +105,11 @@ export default function MyRequests({ api, version, onSeen, onClose }) {
                       <td><TypeBadge type={r.request_type} /></td>
                       <td><EntryCell request={r} /></td>
                       <td className="reason"><RequestDetails request={r} /></td>
-                      <td><span className={`log-badge st-${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span></td>
+                      <td>
+                        <span className={`log-badge st-${r.status}`}>
+                          {STATUS_LABEL[r.status] || r.status}
+                        </span>
+                      </td>
                       <td className="reason">
                         {r.status === "pending" ? (
                           <span className="muted small">Waiting for an admin</span>
@@ -83,9 +128,35 @@ export default function MyRequests({ api, version, onSeen, onClose }) {
                 </tbody>
               </table>
             </div>
-          )
+            <Pagination
+              page={pg.page}
+              pageCount={pg.pageCount}
+              pageSize={pg.pageSize}
+              total={pg.total}
+              onPage={pg.setPage}
+              onPageSize={pg.setPageSize}
+            />
+          </>
         )}
-      </div>
+      </>
+    );
+  }
+
+  return <div className="log-body">{body}</div>;
+}
+
+export default function MyRequests({ api, version, onClose }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+
+  return (
+    <dialog ref={ref} className="dialog dialog-wide" onCancel={(e) => { e.preventDefault(); onClose(); }}>
+      <h2>My Requests</h2>
+      <MyRequestsContent api={api} version={version} />
       <div className="dialog-actions">
         <button type="button" className="pill" onClick={onClose}>Close</button>
       </div>

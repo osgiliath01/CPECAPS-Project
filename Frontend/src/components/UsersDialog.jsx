@@ -1,18 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { fmtStamp } from "../utils/format";
 
 // Admin-only: every account, with controls for the selected one.
-export default function UsersDialog({ api, user, version, onClose, onChanged }) {
-  const ref = useRef(null);
+// The content on its own, so it can sit inside a tab of the User Panel.
+export function UsersContent({ api, user, version, onChanged }) {
   const [users, setUsers] = useState(null);
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    const d = ref.current;
-    if (d && !d.open) d.showModal();
-  }, []);
 
   useEffect(() => {
     api.listUsers().then(setUsers, (e) => setError(e.message));
@@ -30,27 +25,55 @@ export default function UsersDialog({ api, user, version, onClose, onChanged }) 
 
   const selected = users?.find((u) => u.id === selectedId) || null;
 
+  const COLUMNS = 5; // number of <th> cells in the header
+
+  const detailPanel = selected && (
+    selected.is_approved ? (
+      <UserDetails
+        key={selected.id}
+        api={api}
+        target={selected}
+        isSelf={selected.id === user.id}
+        onDone={async (msg, deleted) => {
+          if (deleted) setSelectedId(null);
+          await reload();
+          onChanged?.(msg);
+        }}
+      />
+    ) : (
+      <ApprovalPanel
+        key={selected.id}
+        api={api}
+        target={selected}
+        onDone={async (msg) => {
+          setSelectedId(null);
+          await reload();
+          onChanged?.(msg);
+        }}
+      />
+    )
+  );
+
   return (
-    <dialog ref={ref} className="dialog dialog-wide" onCancel={(e) => { e.preventDefault(); onClose(); }}>
-      <h2>Manage users</h2>
-      <div className="log-body">
-        <div className="log-filters">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or username" aria-label="Search users" />
-        </div>
-        {error && <p className="error">{error}</p>}
-        {shown === null && !error ? (
-          <p className="muted">Loading…</p>
-        ) : shown?.length === 0 ? (
-          <p className="muted">No users found.</p>
-        ) : (
-          shown && (
-            <div className="review-scroll">
-              <table className="review-table">
-                <thead>
-                  <tr><th>User</th><th>Role</th><th>Status</th><th>Last sign-in</th><th /></tr>
-                </thead>
-                <tbody>
-                  {shown.map((u) => (
+    <>
+      <div className="log-filters">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or username" aria-label="Search users" />
+      </div>
+      {error && <p className="error">{error}</p>}
+      {shown === null && !error ? (
+        <p className="muted">Loading…</p>
+      ) : shown?.length === 0 ? (
+        <p className="muted">No users found.</p>
+      ) : (
+        shown && (
+          <div className="review-scroll">
+            <table className="review-table">
+              <thead>
+                <tr><th>User</th><th>Role</th><th>Status</th><th>Last sign-in</th><th /></tr>
+              </thead>
+              <tbody>
+                {shown.map((u) => (
+                  <Fragment key={u.id}>
                     <tr key={u.id} className={u.id === selectedId ? "row-selected" : undefined}>
                       <td>
                         <strong>{u.name}</strong>
@@ -81,41 +104,41 @@ export default function UsersDialog({ api, user, version, onClose, onChanged }) 
                         </button>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
+                    {u.id === selectedId && (
+                      <tr className="row-detail">
+                        <td colSpan={COLUMNS}>{detailPanel}</td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+    </>
+  );
+}
 
-        {selected && !selected.is_approved && (
-          <ApprovalPanel
-            key={selected.id}
-            api={api}
-            target={selected}
-            onDone={async (msg) => {
-              setSelectedId(null);
-              await reload();
-              onChanged?.(msg);
-            }}
-          />
-        )}
-        {selected && selected.is_approved && (
-          <UserPanel
-            key={selected.id}
-            api={api}
-            target={selected}
-            isSelf={selected.id === user.id}
-            onDone={async (msg, deleted) => {
-              if (deleted) setSelectedId(null);
-              await reload();
-              onChanged?.(msg);
-            }}
-          />
-        )}
-      </div>
-      <div className="dialog-actions">
-        <button type="button" className="pill" onClick={onClose}>Close</button>
+// Optional pop-up version: the same content in a window.
+export default function UsersDialog({ api, user, version, onClose, onChanged }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+
+  return (
+    <dialog ref={ref} className="dialog dialog-wide" onCancel={(e) => { e.preventDefault(); onClose(); }}>
+      <button type="button" className="dialog-x" onClick={onClose} aria-label="Close">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        </svg>
+      </button>
+      <h2>Manage users</h2>
+      <div className="log-body">
+        <UsersContent api={api} user={user} version={version} onChanged={onChanged} />
       </div>
     </dialog>
   );
@@ -168,7 +191,8 @@ function ApprovalPanel({ api, target, onDone }) {
   );
 }
 
-function UserPanel({ api, target, isSelf, onDone }) {
+// Controls for one approved account (renamed from UserPanel, to avoid confusion with the page)
+function UserDetails({ api, target, isSelf, onDone }) {
   const [name, setName] = useState(target.name);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -216,7 +240,7 @@ function UserPanel({ api, target, isSelf, onDone }) {
       <h3 className="log-section">
         {target.name} <span className="muted small">@{target.username}</span>
       </h3>
-      {isSelf && <p className="muted small">This is your account. Use Change password in your menu for your own password.</p>}
+      {isSelf && <p className="muted small">This is your account. Use Change password on your User Panel for your own password.</p>}
       {error && <p className="error">{error}</p>}
 
       <div className="user-row">

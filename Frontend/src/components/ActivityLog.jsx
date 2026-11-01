@@ -3,6 +3,7 @@ import { fmtDate, fmtStamp, money } from "../utils/format";
 import DeletionRequests from "./DeletionRequests";
 import PasswordResets from "./PasswordResets";
 import { CountBadge } from "./AdminMenu";
+import Pagination from "./Pagination";
 
 const TABS = [
   { key: "activity", label: "Activity" },
@@ -53,7 +54,7 @@ const RECORD_TYPES = [
   ["project", "Projects"],
   ["user", "Accounts"],
 ];
-const PAGE = 50;
+//const PAGE = 50;
 
 const show = (v) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
@@ -78,14 +79,15 @@ function Changes({ details }) {
 
 function ActivityTab({ api, version }) {
   const [filters, setFilters] = useState({ entity_type: "", action: "", actor: "", q: "" });
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let live = true;
     const t = setTimeout(() => {
-      api.listActivity({ ...filters, limit: PAGE, offset: page * PAGE }).then(
+      api.listActivity({ ...filters, limit: pageSize, offset: (page - 1) * pageSize }).then(
         (d) => live && (setData(d), setError("")),
         (e) => live && setError(e.message)
       );
@@ -94,16 +96,16 @@ function ActivityTab({ api, version }) {
       live = false;
       clearTimeout(t);
     };
-  }, [api, filters, page, version]);
+  }, [api, filters, page, pageSize, version]);
 
   const setFilter = (key) => (e) => {
     setFilters((f) => ({ ...f, [key]: e.target.value }));
-    setPage(0);
+    setPage(1);
   };
 
   const total = data?.total ?? 0;
-  const from = total ? page * PAGE + 1 : 0;
-  const to = Math.min((page + 1) * PAGE, total);
+  //const from = total ? page * PAGE + 1 : 0;
+  //const to = Math.min((page + 1) * PAGE, total);
 
   return (
     <>
@@ -152,13 +154,15 @@ function ActivityTab({ api, version }) {
         </div>
       )}
 
-      {total > PAGE && (
-        <div className="log-pager">
-          <span className="muted small">{from}–{to} of {total}</span>
-          <button className="pill sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Newer</button>
-          <button className="pill sm" disabled={to >= total} onClick={() => setPage((p) => p + 1)}>Older</button>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        pageCount={Math.max(1, Math.ceil(total / pageSize))}
+        pageSize={pageSize}
+        total={total}
+        onPage={setPage}
+        onPageSize={(n) => { setPageSize(n); setPage(1); }}
+        sizes={[10, 25, 50, 100]}
+      />
     </>
   );
 }
@@ -185,6 +189,7 @@ function ArchivedTab({ api, version, onChanged }) {
   const [entries, setEntries] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);
+  const [kind, setKind] = useState("projects"); // "projects" | "entries"
 
   function fetchAll() {
     return Promise.all([api.listArchivedProjects(), api.listArchived()]).then(([p, e]) => {
@@ -228,43 +233,58 @@ function ArchivedTab({ api, version, onChanged }) {
       </p>
       {error && <p className="error">{error}</p>}
 
-      <h3 className="log-section">Projects</h3>
-      {projects?.length === 0 ? (
-        <p className="muted">No archived projects.</p>
-      ) : (
-        projects && (
-          <div className="review-scroll">
-            <table className="review-table">
-              <thead>
-                <tr><th>Project</th><th>Entries</th><th>Total</th><th>Archived</th><th>Deletes in</th><th /></tr>
-              </thead>
-              <tbody>
-                {projects.map((p) => (
-                  <tr key={p.id}>
-                    <td><strong>{p.title}</strong></td>
-                    <td>{p.entry_count}</td>
-                    <td className="amount">{money(p.total_amount)}</td>
-                    <td className="small">
-                      {p.archived_by}
-                      <br />
-                      {p.archived_at && fmtStamp(p.archived_at)}
-                    </td>
-                    <td><TimeLeft item={p} /></td>
-                    <td className="actions">
-                      <button className="pill sm" disabled={busy === `project-${p.id}`} onClick={() => restore("project", p)}>
-                        Restore
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
+      <div className="seg" role="group" aria-label="Archived items">
+        {[
+          ["projects", "Projects", projects],
+          ["entries", "Entries", entries],
+        ].map(([key, label, list]) => (
+          <button
+            key={key}
+            type="button"
+            className="seg-btn"
+            aria-pressed={kind === key}
+            onClick={() => setKind(key)}
+          >
+            {label} <span className="seg-count">{list?.length ?? 0}</span>
+          </button>
+        ))}
+      </div>
 
-      <h3 className="log-section">Entries</h3>
-      {entries?.length === 0 ? (
+      {kind === "projects" ? (
+        projects?.length === 0 ? (
+          <p className="muted">No archived projects.</p>
+        ) : (
+          projects && (
+            <div className="review-scroll">
+              <table className="review-table">
+                <thead>
+                  <tr><th>Project</th><th>Entries</th><th>Total</th><th>Archived</th><th>Deletes in</th><th /></tr>
+                </thead>
+                <tbody>
+                  {projects.map((p) => (
+                    <tr key={p.id}>
+                      <td><strong>{p.title}</strong></td>
+                      <td>{p.entry_count}</td>
+                      <td className="amount">{money(p.total_amount)}</td>
+                      <td className="small">
+                        {p.archived_by}
+                        <br />
+                        {p.archived_at && fmtStamp(p.archived_at)}
+                      </td>
+                      <td><TimeLeft item={p} /></td>
+                      <td className="actions">
+                        <button className="pill sm" disabled={busy === `project-${p.id}`} onClick={() => restore("project", p)}>
+                          Restore
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )
+      ) : entries?.length === 0 ? (
         <p className="muted">No archived entries.</p>
       ) : (
         entries && (
@@ -303,23 +323,16 @@ function ArchivedTab({ api, version, onChanged }) {
   );
 }
 
-// Admin-only window: Activity, Archived entries and pending Archive requests.
-export default function ActivityLog({ api, user, version, pending, onClose, onChanged }) {
-  const ref = useRef(null);
+// For User Panel
+export function ActivityLogContent({ api, user, version, pending, onChanged }) {
   // Open on whatever is waiting for the admin, otherwise on the activity list
   const [tab, setTab] = useState(() =>
     pending?.requests ? "requests" : pending?.resets ? "resets" : "activity"
   );
   const counts = { requests: pending?.requests, resets: pending?.resets };
 
-  useEffect(() => {
-    const d = ref.current;
-    if (d && !d.open) d.showModal();
-  }, []);
-
   return (
-    <dialog ref={ref} className="dialog dialog-wide" onCancel={(e) => { e.preventDefault(); onClose(); }}>
-      <h2>Activity Log</h2>
+    <>
       <div className="log-tabs" role="tablist">
         {TABS.map((t) => (
           <button
@@ -331,7 +344,7 @@ export default function ActivityLog({ api, user, version, pending, onClose, onCh
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            <CountBadge count={counts[t.key]} />
+            {counts[t.key] > 0 && <CountBadge count={counts[t.key]} />}
           </button>
         ))}
       </div>
@@ -342,7 +355,23 @@ export default function ActivityLog({ api, user, version, pending, onClose, onCh
         {tab === "requests" && <DeletionRequests api={api} user={user} version={version} onChanged={onChanged} />}
         {tab === "resets" && <PasswordResets api={api} user={user} version={version} onChanged={onChanged} />}
       </div>
+    </>
+  );
+}
 
+// Optional pop-up version: the same content in a window.
+export default function ActivityLog({ api, user, version, pending, onClose, onChanged }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+
+  return (
+    <dialog ref={ref} className="dialog dialog-wide" onCancel={(e) => { e.preventDefault(); onClose(); }}>
+      <h2>Activity Log</h2>
+      <ActivityLogContent api={api} user={user} version={version} pending={pending} onChanged={onChanged} />
       <div className="dialog-actions">
         <button type="button" className="pill" onClick={onClose}>Close</button>
       </div>

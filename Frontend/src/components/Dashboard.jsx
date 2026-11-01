@@ -6,11 +6,10 @@ import EntryDialog from "./EntryDialog";
 import PasswordDialog from "./PasswordDialog";
 import CreateProjectDialog from "./ProjectDialog";
 import ChatWidget from "./ChatWidget";
-import ActivityLog from "./ActivityLog";
-import MyRequests from "./MyRequests";
 import UsersDialog from "./UsersDialog";
 import ImportDialog from "./ImportDialog";
 import logo from "../assets/logo.webp";
+import UserPanel from "./UserPanel";
 
 const FILTERS = [
   { key: "project_title", label: "Project Title" },
@@ -30,9 +29,8 @@ export default function Dashboard({ api, user, onLogout }) {
   const [fields, setFields] = useState(["project_title", "payee"]);
   const [dialog, setDialog] = useState(null); // { mode: "create" | "edit", entry? }
   const [pwOpen, setPwOpen] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [myRequestsOpen, setMyRequestsOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
+  const [page, setPage] = useState("main"); // "main" | "user"
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [liveStatus, setLiveStatus] = useState("connecting");
@@ -260,11 +258,18 @@ export default function Dashboard({ api, user, onLogout }) {
 
   const initial = (user.name || user.username || "?").trim()[0].toUpperCase();
 
+  const goHome = () => {
+    setPage("main");
+    setView(null);
+  };
+
   return (
     <div className="app">
       <header className="topbar">
         <div className="logo">
-          <img src={logo} alt="Calamba Allied Industrial Corporation" />
+          <button type="button" className="logo-btn" onClick={goHome} aria-label="Go to Voucher Control">
+            <img src={logo} alt="Calamba Allied Industrial Corporation" />
+          </button>
         </div>
 
         <div className="searchblock">
@@ -276,7 +281,7 @@ export default function Dashboard({ api, user, onLogout }) {
             <span className="sr">Search</span>
             <input
               type="search"
-              placeholder="Search"
+              placeholder="Search a project"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -308,63 +313,80 @@ export default function Dashboard({ api, user, onLogout }) {
           >
             {liveStatus === "live" ? "Live" : "Reconnecting…"}
           </span>
+          
           <AdminMenu
             user={user}
             initial={initial}
-            onActivity={() => setReviewOpen(true)}
             pendingCount={user.is_superuser ? pending.requests + pending.resets : pending.responses}
             accountsCount={user.is_superuser ? pending.accounts : 0}
-            onMyRequests={() => setMyRequestsOpen(true)}
-            onPassword={() => setPwOpen(true)}
-            onUsers={() => setUsersOpen(true)}
+            onMyRequests={() => setPage("user")}
+            onHome={goHome}
+            onUserPanel={() => setPage("user")}
             onLogout={onLogout}
           />
         </div>
       </header>
 
       <main className="main">
-        {error && (
-          <div role="alert" className="banner">
-            <span>{error}</span>
-            <button className="link" onClick={refresh}>
-              Try again
-            </button>
-          </div>
-        )}
 
-        {view === null ? (
-          <VoucherControl
-            entries={entries}
-            projects={projects}
-            loading={loading}
-            q={q}
-            fields={fields}
-            isAdmin={user.is_superuser}
-            onNew={() => setCreatingProject(true)}
-            onView={(e) => setView(e.project_title)}
-            onArchiveProject={handleArchiveProject}
-            onImport={() => setImportOpen(true)}
-          />
-        ) : summary ? (
-          <SummaryOfExpenses
-            key={summary.project_title}
-            summary={summary}
-            q={q}
-            onBack={() => setView(null)}
-            onNew={() => setDialog({ mode: "create" })}
-            onEdit={(entry) =>
-              setDialog({ mode: "edit", entry: { ...entry, project_title: summary.project_title } })
-            }
-            isAdmin={user.is_superuser}
-            onDelete={handleDelete}
-            onRequestDelete={handleRequestDelete}
+        {page === "user" ? (
+          <UserPanel
+            api={api}
+            user={user}
+            version={liveVersion}
+            onPassword={() => setPwOpen(true)}
+            onLogout={onLogout}
+            onChanged={(msg) => { setToast(msg); refresh(); }}
+            pending={pending}
           />
         ) : (
+
           <>
-            <button className="pill" onClick={() => setView(null)}>
-              Back to Voucher Control
-            </button>
-            {summaryLoading && <p className="muted pad">Loading entries…</p>}
+
+          {error && (
+            <div role="alert" className="banner">
+              <span>{error}</span>
+              <button className="link" onClick={refresh}>
+                Try again
+              </button>
+            </div>
+          )}
+
+          {view === null ? (
+            <VoucherControl
+              entries={entries}
+              projects={projects}
+              loading={loading}
+              q={q}
+              fields={fields}
+              isAdmin={user.is_superuser}
+              onNew={() => setCreatingProject(true)}
+              onView={(e) => setView(e.project_title)}
+              onArchiveProject={handleArchiveProject}
+              onImport={() => setImportOpen(true)}
+            />
+          ) : summary ? (
+            <SummaryOfExpenses
+              key={summary.project_title}
+              summary={summary}
+              q={q}
+              onBack={() => setView(null)}
+              onNew={() => setDialog({ mode: "create" })}
+              onEdit={(entry) =>
+                setDialog({ mode: "edit", entry: { ...entry, project_title: summary.project_title } })
+              }
+              isAdmin={user.is_superuser}
+              onDelete={handleDelete}
+              onRequestDelete={handleRequestDelete}
+            />
+          ) : (
+            <>
+              <button className="pill" onClick={() => setView(null)}>
+                Back to Voucher Control
+              </button>
+              {summaryLoading && <p className="muted pad">Loading entries…</p>}
+            </>
+            )}
           </>
         )}
       </main>
@@ -398,14 +420,6 @@ export default function Dashboard({ api, user, onLogout }) {
           onClose={() => setPwOpen(false)}
         />
       )}
-      {myRequestsOpen && (
-        <MyRequests
-          api={api}
-          version={liveVersion}
-          onSeen={() => setPending((p) => ({ ...p, responses: 0 }))}
-          onClose={() => setMyRequestsOpen(false)}
-        />
-      )}
       {importOpen && (
         <ImportDialog
           api={api}
@@ -429,16 +443,6 @@ export default function Dashboard({ api, user, onLogout }) {
           version={liveVersion}
           onClose={() => setUsersOpen(false)}
           onChanged={setToast}
-        />
-      )}
-      {reviewOpen && (
-        <ActivityLog
-          version={liveVersion}
-          api={api}
-          user={user}
-          pending={pending}
-          onClose={() => setReviewOpen(false)}
-          onChanged={(msg) => { setToast(msg); refresh(); }}
         />
       )}
       {toast && (
