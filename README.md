@@ -74,10 +74,11 @@ Everything runs on **one server** (currently the laptop `aaron`), in Docker: the
 
 ```
 Browsers ──Tailscale──► database.nyala-ordinal.ts.net (the server)
-                          ├─ web     :80    the app's screens (nginx) ── /api/… ──┐
-                          ├─ api     :8000  the backend (FastAPI)  ◄──────────────┘
-                          ├─ db      :5432  the database (PostgreSQL)
-                          └─ ollama         the AI model (private, GPU)
+                          ├─ web       :80    the app's screens (nginx) ── /api/… ──────┐
+                          ├─ api       :8000  the backend (FastAPI, 4 processes) ◄──────┤
+                          ├─ assistant        the backend for /api/chat only (1 process) ◄┘
+                          ├─ db        :5432  the database (PostgreSQL)
+                          └─ ollama           the AI model (private, GPU)
 ```
 
 ### Using the app
@@ -417,7 +418,7 @@ Status changes were already protected (a request can't be approved twice, an ent
 
 The chat bubble (bottom right) is now an assistant that answers questions about the records, for example *"Which projects spent the most this year?"*, *"Show the latest payments to Laguna Steel"* or *"Spending per month for Plant 2 Roof Replacement"*.
 
-**Where it runs.** A local model server, **Ollama**, runs as a third container (`caic-ollama`) in the same Docker stack. It has no published port: only the backend can reach it, nobody on the network can use the model directly, and no data leaves the server. The model is set by `OLLAMA_MODEL` in `docker-compose.yml`, currently **`qwen3:4b-instruct-2507-q4_K_M`**. Download it once:
+**Where it runs.** Questions go to their own backend container, **`assistant`** (`caic-assistant`, same code as `api`; nginx sends `/api/chat` there), so heavy use of the rest of the app can't starve it. A local model server, **Ollama**, runs as another container (`caic-ollama`) in the same Docker stack. It has no published port: only the backend can reach it, nobody on the network can use the model directly, and no data leaves the server. The model is set by `OLLAMA_MODEL` in `docker-compose.yml`, currently **`qwen3:4b-instruct-2507-q4_K_M`**. Download it once:
 
 ```bash
 docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
@@ -658,10 +659,10 @@ All changes are applied automatically when the backend starts:
 | `imports.py` | **new** | CSV import with preview and per-row validation |
 | `live.py` | **new** | Live updates: Activity Log watcher and `/live` stream |
 | `chatbot.py` | **new** | Assistant: `/chat` route, read-only tools, app guide, safety net, action-request handling, thinking-model handling, Ollama connection |
-| `Dockerfile`, `.dockerignore`, `requirements.txt` | **new** | Image for the shared backend (Linux-friendly dependency list) |
-| `docker-compose.yml` | changed | New `api` service; `web` service (the app on port 80); `ollama` service with GPU access, memory limit and memory-saving settings |
+| `Dockerfile`, `.dockerignore`, `requirements.txt` | **new** | Image for the shared backend (Linux-friendly dependency list); sets up the tables once, then starts `WEB_WORKERS` processes |
+| `docker-compose.yml` | changed | New `api` service (4 processes); `assistant` service (`/chat` only); `web` service (the app on port 80); `ollama` service with GPU access, memory limit and memory-saving settings; PostgreSQL `max_connections` 200 |
 | `models.py` | changed | Archive columns; `archived_with_project`; `must_change_password`; new `ActivityLog`, `DeletionRequest`, `PasswordResetRequest`; totals skip archived entries |
-| `database.py` | changed | `ensure_schema()` adds new columns; `init_db()` promotes an existing `admin` and logs it; connection pool raised to 40 |
+| `database.py` | changed | `ensure_schema()` adds new columns; `init_db()` promotes an existing `admin` and logs it; connection pool per process set by `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` |
 | `security.py` | changed | `get_current_superuser`; `get_current_user` blocks temporary passwords (`get_current_user_allow_temporary` allows them); deactivated accounts get `401`; `user_from_token` for streaming routes (doesn't hold a database connection) |
 | `crud.py` | changed | Archived projects and entries excluded from lists and summaries; hard-delete removed; project totals computed by the database; `get_active_disbursements` for the voucher list |
 | `schemas.py` | changed | `ProjectResponse.entry_count`; `DisbursementListItem` (an entry with its project title) |
@@ -700,7 +701,7 @@ All changes are applied automatically when the backend starts:
 | `components/ChatFormat.jsx` | **new** | Shows tables and **bold** in assistant answers |
 | `api/live.js` | **new** | Live-updates connection with automatic reconnect |
 | `Frontend/.env.example` | **new** | Points a local `npm run dev` at the shared backend (copy to `.env.local`) |
-| `Frontend/Dockerfile`, `Frontend/nginx.conf`, `Frontend/.dockerignore` | **new** | Build the app and serve it with nginx, passing `/api/` to the backend |
+| `Frontend/Dockerfile`, `Frontend/nginx.conf`, `Frontend/.dockerignore` | **new** | Build the app and serve it with nginx, passing `/api/chat` to the `assistant` container and the rest of `/api/` to `api`; gzip for JSON |
 | `version.js` | **new** | The version stamp and its label |
 | `components/UpdateBanner.jsx` | **new** | "A new version of the app is available" bar |
 | `App.jsx`, `components/Login.jsx`, `components/AdminMenu.jsx` | changed | Show the update bar and the version |
@@ -722,6 +723,9 @@ All changes are applied automatically when the backend starts:
 | `OLLAMA_KEEP_ALIVE` | `Backend/docker-compose.yml` (ollama) | 30m | How long the model stays loaded after the last question |
 | `VITE_API_URL` | `Frontend/.env.local` (local dev); `/api` in deployed builds | shared backend | Which backend the app talks to |
 | App port | `Backend/docker-compose.yml` (web) | 80 | Change if port 80 is taken on the server |
+| `WEB_WORKERS` | `Backend/docker-compose.yml` (api, assistant) | 4, 1 | Backend processes; about one per CPU core you want to use |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | `Backend/docker-compose.yml` (api, assistant) | 10+10, 5+5 | Database connections per process. Keep processes × (pool + overflow) under `max_connections` |
+| `max_connections` | `Backend/docker-compose.yml` (db `command`) | 200 | PostgreSQL's connection limit |
 | Auto-deploy interval | `install-autodeploy.ps1 -Minutes` | 5 | How often `main` is checked |
 | Update check | `Frontend/src/components/UpdateBanner.jsx` (`CHECK_EVERY_MS`) | 1 minute | How often open screens check for a new version |
 | Token lifetime | `Backend/auth.py` (`/token` route) | 30 minutes | Users are signed out after this |
@@ -844,7 +848,15 @@ Options: `$env:LT_WRITE = "1"` also adds entries (to "ZZ Load Test"; archive tha
 
 The load test now loads Voucher Control the same way (`/projects` + `/disbursements/`). Re-run with 100 users to compare.
 
-**Remaining limits** (to watch for): a change by anyone makes every open screen reload the list at once; the backend runs as one process; the assistant answers one question at a time.
+**Third run, 500 users:** 0% failures, median 190 ms, 95th percentile 760 ms. `docker stats` showed `caic-api` at **108% CPU** (its one process maxed out) while the database (11%), nginx (11%) and memory were fine. During that run **the assistant froze**: it shared the saturated process, so its streamed reply waited behind hundreds of dashboard requests. Fixed by:
+
+- **Several backend processes:** `api` runs 4 uvicorn workers (`WEB_WORKERS`) to use 4 CPU cores. The database tables are set up once before they start.
+- **The assistant on its own process:** a separate `assistant` container serves `/api/chat` only.
+- **Connections sized to fit:** each process has its own pool (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`): api 4 × 20 + assistant 10 = 90, and PostgreSQL now allows 200.
+
+Re-run with 500 users, and ask the assistant something during the run, to compare.
+
+**Remaining limits** (to watch for): a change by anyone makes every open screen reload the list at once; the voucher list sends every active entry (fine now, but should be paged as the data grows to tens of thousands of entries); the assistant answers one question at a time.
 
 ---
 

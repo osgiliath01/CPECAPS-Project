@@ -36,10 +36,11 @@ ensure_database_exists(DATABASE_URL)
 # 2. Main Database Engine
 engine = create_engine(
     DATABASE_URL,
-    # Up to 40 connections: matches the 40 requests the backend works on at once, so none of
-    # them waits for a connection. PostgreSQL allows 100 by default.
-    pool_size=20,
-    max_overflow=20,
+    # Connections per backend process (set in docker-compose.yml). Default up to 40: matches the
+    # 40 requests a process works on at once. Processes x pool must stay under PostgreSQL's
+    # max_connections (200 in docker-compose.yml).
+    pool_size=int(os.getenv("DB_POOL_SIZE", "20")),
+    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
     pool_pre_ping=True,
     connect_args={"connect_timeout": 5}
 )

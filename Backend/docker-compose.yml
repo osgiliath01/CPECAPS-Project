@@ -1,8 +1,20 @@
+# Settings shared by the two backend containers (api and assistant)
+x-backend-env: &backend-env
+  # "db" is the database container below; the backend reaches it inside Docker
+  DATABASE_URL: postgresql+psycopg://postgres:caic123@db:5432/caic_db
+  # The assistant's model server and model (see the ollama service below and chatbot.py)
+  OLLAMA_HOST: http://ollama:11434
+  OLLAMA_MODEL: qwen3:4b-instruct-2507-q4_K_M
+  # This instruct model answers directly; Ollama labels it "thinking" only because of its template
+  OLLAMA_THINK: "false"
+
 services:
   db:
     image: postgres:16-alpine
     container_name: postgres-db
     restart: unless-stopped
+    # Room for every backend process's connection pool plus developers (default is 100)
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: caic123
@@ -23,15 +35,28 @@ services:
     container_name: caic-api
     restart: unless-stopped
     environment:
-      # "db" is the database container above; the backend reaches it inside Docker
-      DATABASE_URL: postgresql+psycopg://postgres:caic123@db:5432/caic_db
-      # The assistant's model server and model (see the ollama service below and chatbot.py)
-      OLLAMA_HOST: http://ollama:11434
-      OLLAMA_MODEL: qwen3:4b-instruct-2507-q4_K_M
-      # This instruct model answers directly; Ollama labels it "thinking" only because of its template
-      OLLAMA_THINK: "false"
+      <<: *backend-env
+      WEB_WORKERS: 4          # processes, to use 4 CPU cores (one process maxed out at ~500 users)
+      DB_POOL_SIZE: 10        # per process: 4 x (10 + 10) = up to 80 connections
+      DB_MAX_OVERFLOW: 10
     ports:
       - "0.0.0.0:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The assistant (/chat) on its own backend process, so heavy use of the rest of the app can't
+  # starve it (at 500 users it froze when it shared the api process). Same code as api; nginx
+  # sends /api/chat here. Not published: only the web container reaches it.
+  assistant:
+    build: .
+    container_name: caic-assistant
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      WEB_WORKERS: 1
+      DB_POOL_SIZE: 5         # its lookups are small: up to 10 connections
+      DB_MAX_OVERFLOW: 5
     depends_on:
       db:
         condition: service_healthy
@@ -53,9 +78,10 @@ services:
       - "0.0.0.0:80:80"
     depends_on:
       - api
+      - assistant
 
   # Local AI model server for the chatbot. Private: no published port, so only the
-  # api container can reach it (at http://ollama:11434). Download a model once with:
+  # backend containers can reach it (at http://ollama:11434). Download a model once with:
   #   docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
   ollama:
     image: ollama/ollama

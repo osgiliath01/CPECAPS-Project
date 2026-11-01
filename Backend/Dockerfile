@@ -11,5 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 
 EXPOSE 8000
-# --timeout-graceful-shutdown: live-update connections stay open, so don't wait for them on restart
-CMD ["uvicorn", "auth:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "3"]
+# 1. "import auth" sets up/upgrades the database tables once, before the processes start
+#    (so several processes don't all try to create a new table at the same moment).
+# 2. WEB_WORKERS processes (docker-compose.yml) share the work across CPU cores.
+# --timeout-graceful-shutdown: live-update connections stay open, so don't wait for them on restart.
+CMD ["sh", "-c", "python -c 'import auth' && exec uvicorn auth:app --host 0.0.0.0 --port 8000 --workers ${WEB_WORKERS:-1} --timeout-graceful-shutdown 3"]
