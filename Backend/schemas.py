@@ -77,6 +77,11 @@ class DisbursementItemResponse(BaseModel):
         return ph_dt.isoformat(timespec="seconds")
 
 
+class DisbursementListItem(DisbursementItemResponse):
+    """An entry with its project, for the Voucher Control list (GET /disbursements/)."""
+    project_title: str
+
+
 class ProjectSummaryResponse(BaseModel):
     project_title: str
     entries: List[DisbursementItemResponse]

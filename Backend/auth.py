@@ -195,7 +195,7 @@ def read_all_projects(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(security.get_current_user),
 ):
-    """Returns a list of all existing projects with calculated totals upon login."""
+    """Active projects with their totals (computed by the database) and entry counts."""
     return crud.get_all_projects(db)
 
 
@@ -252,6 +252,20 @@ def archive_project(
 # ==========================================
 # DISBURSEMENT RELATED ROUTES (PROTECTED)
 # ==========================================
+
+
+@app.get(
+    "/disbursements/",
+    response_model=List[schemas.DisbursementListItem],
+    tags=["Disbursements"],
+)
+def list_disbursements(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Every active entry with its project title, newest first. Voucher Control loads this in
+    one request (it used to ask for each project's summary: 100+ requests per page load)."""
+    return crud.get_active_disbursements(db)
 
 
 @app.post(

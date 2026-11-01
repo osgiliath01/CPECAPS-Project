@@ -101,24 +101,9 @@ export function createApi(token, onUnauthorized) {
 
     // Lists every project from the backend, then combines their summaries
     // into one flat list of entries for the Voucher Control table.
-    listDisbursements: async () => {
-      const projects = await call(ROUTES.projects);
-      const results = await Promise.allSettled(
-        projects.map((p) => call(ROUTES.summary(p.title)))
-      );
-      const rows = [];
-      let failure = null;
-      results.forEach((r, i) => {
-        if (r.status === "fulfilled") {
-          const title = r.value.project_title || projects[i].title;
-          r.value.entries.forEach((en) => rows.push({ ...en, project_title: title }));
-        } else {
-          failure = r.reason;
-        }
-      });
-      if (failure && rows.length === 0 && projects.length > 0) throw failure;
-      return rows;
-    },
+    // Every active entry with its project title, in one request (it used to be one request
+    // per project: 100+ per page load, the main cost found in the load test)
+    listDisbursements: () => call(ROUTES.disbursements),
 
     getSummary: (title) => call(ROUTES.summary(title)),
 

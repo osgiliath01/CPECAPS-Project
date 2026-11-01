@@ -1,4 +1,5 @@
 from typing import List, Optional
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 import models
@@ -56,9 +57,45 @@ def change_password(db: Session, username: str, new_password: str) -> models.Use
 # ==========================================
 
 
-def get_all_projects(db: Session) -> List[models.Project]:
-    """Fetches all projects that are not archived."""
-    return db.query(models.Project).filter(models.Project.is_archived.is_(False)).all()
+def get_all_projects(db: Session) -> List[dict]:
+    """Active projects with their totals, computed by the database in a single query.
+
+    (It used to load every entry of every project into Python to add them up, one query per
+    project: 3.5 s under load in the load test.)"""
+    active_amount = case((models.Disbursement.is_archived.is_(False), models.Disbursement.amount), else_=0)
+    rows = (
+        db.query(
+            models.Project.id,
+            models.Project.title,
+            func.coalesce(func.sum(active_amount), 0).label("total_amount"),
+            func.count(models.Disbursement.id).label("entry_count"),  # archived entries included
+        )
+        .outerjoin(models.Disbursement, models.Disbursement.project_id == models.Project.id)
+        .filter(models.Project.is_archived.is_(False))
+        .group_by(models.Project.id, models.Project.title)
+        .order_by(models.Project.title)
+        .all()
+    )
+    return [
+        {"id": r.id, "title": r.title, "total_amount": r.total_amount, "entry_count": r.entry_count}
+        for r in rows
+    ]
+
+
+_ENTRY_FIELDS = ("id", "date", "payee", "cv_no", "amount", "created_at", "updated_at", "created_by", "updated_by")
+
+
+def get_active_disbursements(db: Session) -> List[dict]:
+    """Every active entry with its project title, newest first, in a single query.
+    Voucher Control uses this instead of asking for each project's summary separately."""
+    rows = (
+        db.query(models.Disbursement, models.Project.title)
+        .join(models.Project, models.Disbursement.project_id == models.Project.id)
+        .filter(models.Disbursement.is_archived.is_(False), models.Project.is_archived.is_(False))
+        .order_by(models.Disbursement.date.desc(), models.Disbursement.id.desc())
+        .all()
+    )
+    return [{**{f: getattr(d, f) for f in _ENTRY_FIELDS}, "project_title": title} for d, title in rows]
 
 
 def get_project_by_title(db: Session, title: str) -> Optional[models.Project]:

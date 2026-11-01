@@ -106,13 +106,11 @@ class AppUser(HttpUser):
 
     # ---------- what the screens request ----------
     def open_dashboard(self):
-        """Voucher Control: the project list, then one summary per project (as the screens do now)."""
+        """Voucher Control, as the screens load it: the project list and the voucher list."""
         r = self.api("GET", "/projects", name="/projects")
-        if r.status_code != 200:
-            return
-        self._projects = [p["title"] for p in r.json()]
-        for title in self._projects:
-            self.api("GET", f"/projects/{quote(title, safe='')}/summary", name="/projects/[title]/summary")
+        if r.status_code == 200:
+            self._projects = [p["title"] for p in r.json()]
+        self.api("GET", "/disbursements/", name="/disbursements/ (voucher list)")
 
     def open_project(self):
         if not self._projects:

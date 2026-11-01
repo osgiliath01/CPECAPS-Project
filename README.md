@@ -574,6 +574,7 @@ All changes are applied automatically when the backend starts:
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
+| GET | `/disbursements/` | user | Every active entry with its project title (the Voucher Control list, in one request) |
 | POST | `/disbursements/` | user | Add an entry |
 | PATCH | `/disbursements/{id}` | admin | Edit directly. Optional `original` (values seen) enables the conflict check |
 | DELETE | `/disbursements/{id}?reason=` | admin | **Archive** |
@@ -662,8 +663,8 @@ All changes are applied automatically when the backend starts:
 | `models.py` | changed | Archive columns; `archived_with_project`; `must_change_password`; new `ActivityLog`, `DeletionRequest`, `PasswordResetRequest`; totals skip archived entries |
 | `database.py` | changed | `ensure_schema()` adds new columns; `init_db()` promotes an existing `admin` and logs it; connection pool raised to 40 |
 | `security.py` | changed | `get_current_superuser`; `get_current_user` blocks temporary passwords (`get_current_user_allow_temporary` allows them); deactivated accounts get `401`; `user_from_token` for streaming routes (doesn't hold a database connection) |
-| `crud.py` | changed | Archived projects and entries excluded from lists and summaries; hard-delete removed |
-| `schemas.py` | changed | `ProjectResponse.entry_count` |
+| `crud.py` | changed | Archived projects and entries excluded from lists and summaries; hard-delete removed; project totals computed by the database; `get_active_disbursements` for the voucher list |
+| `schemas.py` | changed | `ProjectResponse.entry_count`; `DisbursementListItem` (an entry with its project title) |
 
 ### Project root
 
@@ -835,7 +836,15 @@ Options: `$env:LT_WRITE = "1"` also adds entries (to "ZZ Load Test"; archive tha
 
 **Finding from the first load test (Nov 1, 2026):** 31 users ran with 0% failures and a 95th percentile of 120 ms, but at **100 users the app stalled** (requests took 30–90 s, 6% failures). Cause: the live-updates stream (`/live`) and the assistant (`/chat`) checked the sign-in through a dependency whose database session FastAPI keeps open until the response ends, so **every open browser tab held one of the 30 database connections**. Past ~30 open tabs, nothing else could reach the database. Fixed by checking the sign-in for streaming routes with a short session that closes immediately (`security.user_from_token`), and by raising the connection pool to 40 to match the backend's 40 simultaneous requests. Re-run the same test to compare.
 
-**Likely limits** (to watch for): Voucher Control loads one summary per project, so each page load is 100+ requests; a change by anyone makes every open screen reload the list at once; the backend runs as one process with 30 database connections; the assistant answers one question at a time.
+**Second run, after that fix:** 100 users with **0% failures**, but slow (1–4 s): the backend was saturated at about 75–100 requests a second, almost all of them per-project summaries, and `/projects` took 3.5 s because it loaded every entry of every project to add up totals. Fixed by:
+
+- **One request for the voucher list:** `GET /disbursements/` returns every active entry with its project title, so a Voucher Control load is **2 requests instead of 100+** (it also loaded the project list twice before).
+- **Totals computed by the database:** `/projects` uses a single `SUM … GROUP BY` query instead of loading entries into Python.
+- **Compression:** nginx gzips JSON responses, so the voucher list travels about 10× smaller.
+
+The load test now loads Voucher Control the same way (`/projects` + `/disbursements/`). Re-run with 100 users to compare.
+
+**Remaining limits** (to watch for): a change by anyone makes every open screen reload the list at once; the backend runs as one process; the assistant answers one question at a time.
 
 ---
 
