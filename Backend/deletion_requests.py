@@ -54,6 +54,7 @@ class RequestResponse(BaseModel):
     review_note: Optional[str]
     created_at: datetime
     reviewed_at: Optional[datetime]
+    requester_seen: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -118,6 +119,7 @@ def _mark_reviewed(req: models.DeletionRequest, user: models.User, new_status: s
     req.status = new_status
     req.reviewed_by = user.username
     req.reviewed_at = datetime.now(timezone.utc)
+    req.requester_seen = False  # the requester gets a badge until they open My requests
     note = (payload.note or "").strip() if payload else ""
     req.review_note = note or None
 
@@ -204,6 +206,26 @@ def list_my_requests(
         .limit(200)
         .all()
     )
+
+
+@router.post("/my-requests/seen")
+def mark_my_requests_seen(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Marks the signed-in user's answered requests as seen, which clears their badge.
+    Not written to the Activity Log: it's just reading."""
+    updated = (
+        db.query(models.DeletionRequest)
+        .filter(
+            models.DeletionRequest.requested_by == current_user.username,
+            models.DeletionRequest.status != "pending",
+            models.DeletionRequest.requester_seen.is_(False),
+        )
+        .update({models.DeletionRequest.requester_seen: True}, synchronize_session=False)
+    )
+    db.commit()
+    return {"updated": updated}
 
 
 # ---------- Review (admins only) ----------

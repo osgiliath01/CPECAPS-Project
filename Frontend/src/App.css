@@ -345,6 +345,11 @@ button { cursor: pointer; }
 .log-badge.act-admin_reset, .log-badge.act-user_update { background: #fff0c2; }
 .log-badge.act-user_delete { background: #f9d6d6; }
 .review-table tr.row-selected td { background: #fff8e1; }
+.review-table tr.row-new td { background: #fdecea; }
+.new-tag {
+  display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.4rem; border-radius: 999px;
+  background: #d93025; color: #fff; font-size: 0.7rem; font-weight: 700;
+}
 .user-panel { border: 1.5px solid var(--line); border-radius: 1rem; padding: 0.4rem 1rem 1rem; margin-top: 1rem; }
 .user-row { display: flex; align-items: flex-end; gap: 0.6rem; flex-wrap: wrap; }
 .user-row .user-name { flex: 1 1 14rem; margin-bottom: 0; }

@@ -5,7 +5,7 @@ import { EntryCell, RequestDetails, TypeBadge } from "./DeletionRequests";
 const STATUS_LABEL = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
 
 // Normal users: their own archive and edit requests, and what the admin decided.
-export default function MyRequests({ api, version, onClose }) {
+export default function MyRequests({ api, version, onSeen, onClose }) {
   const ref = useRef(null);
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
@@ -16,8 +16,22 @@ export default function MyRequests({ api, version, onClose }) {
   }, []);
 
   useEffect(() => {
-    api.listMyRequests().then(setItems, (e) => setError(e.message));
-  }, [api, version]);
+    let cancelled = false;
+    api.listMyRequests().then(
+      (rows) => {
+        if (cancelled) return;
+        setItems(rows);
+        // Opening this window counts as reading the answers: clear the badge
+        if (rows.some((r) => r.status !== "pending" && r.requester_seen === false)) {
+          api.markRequestsSeen?.().then(() => onSeen?.(), () => {});
+        }
+      },
+      (e) => !cancelled && setError(e.message)
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <dialog ref={ref} className="dialog dialog-wide" onCancel={(e) => { e.preventDefault(); onClose(); }}>
@@ -37,8 +51,16 @@ export default function MyRequests({ api, version, onClose }) {
                 </thead>
                 <tbody>
                   {items.map((r) => (
-                    <tr key={r.id}>
-                      <td className="nowrap small">{fmtStamp(r.created_at)}</td>
+                    <tr
+                      key={r.id}
+                      className={r.status !== "pending" && r.requester_seen === false ? "row-new" : undefined}
+                    >
+                      <td className="nowrap small">
+                        {fmtStamp(r.created_at)}
+                        {r.status !== "pending" && r.requester_seen === false && (
+                          <span className="new-tag">New</span>
+                        )}
+                      </td>
                       <td><TypeBadge type={r.request_type} /></td>
                       <td><EntryCell request={r} /></td>
                       <td className="reason"><RequestDetails request={r} /></td>

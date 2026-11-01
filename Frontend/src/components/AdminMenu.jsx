@@ -48,9 +48,11 @@ export default function AdminMenu({
         onClick={() => setOpen((o) => !o)}
       >
         <img src={avatar} alt="" className="avatar-img" />
-        {user.is_superuser && (
-          <CountBadge count={pendingCount} label="pending requests" className="on-avatar" />
-        )}
+        <CountBadge
+          count={pendingCount}
+          label={user.is_superuser ? "pending requests" : "new responses"}
+          className="on-avatar"
+        />
         <span className="adminname">{user.is_superuser ? "Admin" : user.name}</span>
         <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
           <path d="m5 9 7 7 7-7" fill="none" stroke="currentColor" strokeWidth="1.8" />
@@ -83,6 +85,7 @@ export default function AdminMenu({
               }}
             >
               My requests
+              <CountBadge count={pendingCount} label="new responses" />
             </button>
           )}
           <button

@@ -37,7 +37,8 @@ export default function Dashboard({ api, user, onLogout }) {
   const [toast, setToast] = useState("");
   const [liveStatus, setLiveStatus] = useState("connecting");
   const [liveVersion, setLiveVersion] = useState(0); // bumps on every change, so open windows reload
-  const [pending, setPending] = useState({ requests: 0, resets: 0 }); // admins: badge counts
+  // Badge counts. Admins: requests and password resets waiting. Staff: answers not yet seen.
+  const [pending, setPending] = useState({ requests: 0, resets: 0, responses: 0 });
   const reqId = useRef(0);
 
   const loadEntries = useCallback(async () => {
@@ -102,12 +103,22 @@ export default function Dashboard({ api, user, onLogout }) {
 
   // Admins: how many archive/edit requests and password resets are waiting. New requests,
   // approvals and rejections all arrive as live updates, so this refreshes on its own.
+  // Staff: how many of their requests an admin has answered since they last opened My requests.
   useEffect(() => {
-    if (!user.is_superuser || !api.listRequests) return;
+    if (!api.listRequests) return; // demo mode
     let cancelled = false;
-    Promise.all([api.listRequests("pending"), api.listResetRequests("pending")])
-      .then(([requests, resets]) => {
-        if (!cancelled) setPending({ requests: requests.length, resets: resets.length });
+    const counts = user.is_superuser
+      ? Promise.all([api.listRequests("pending"), api.listResetRequests("pending")]).then(
+          ([requests, resets]) => ({ requests: requests.length, resets: resets.length, responses: 0 })
+        )
+      : api.listMyRequests().then((mine) => ({
+          requests: 0,
+          resets: 0,
+          responses: mine.filter((r) => r.status !== "pending" && r.requester_seen === false).length,
+        }));
+    counts
+      .then((c) => {
+        if (!cancelled) setPending(c);
       })
       .catch(() => {}); // the badge is a hint; never show an error for it
     return () => {
@@ -293,7 +304,7 @@ export default function Dashboard({ api, user, onLogout }) {
             user={user}
             initial={initial}
             onActivity={() => setReviewOpen(true)}
-            pendingCount={pending.requests + pending.resets}
+            pendingCount={user.is_superuser ? pending.requests + pending.resets : pending.responses}
             onMyRequests={() => setMyRequestsOpen(true)}
             onPassword={() => setPwOpen(true)}
             onUsers={() => setUsersOpen(true)}
@@ -379,7 +390,12 @@ export default function Dashboard({ api, user, onLogout }) {
         />
       )}
       {myRequestsOpen && (
-        <MyRequests api={api} version={liveVersion} onClose={() => setMyRequestsOpen(false)} />
+        <MyRequests
+          api={api}
+          version={liveVersion}
+          onSeen={() => setPending((p) => ({ ...p, responses: 0 }))}
+          onClose={() => setMyRequestsOpen(false)}
+        />
       )}
       {importOpen && (
         <ImportDialog

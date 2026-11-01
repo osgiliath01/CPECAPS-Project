@@ -130,6 +130,7 @@ export function createApi(token, onUnauthorized) {
     requestEdit: (id, body) =>
       call(`/disbursements/${id}/edit-request`, { method: "POST", body }),
     listMyRequests: () => call("/my-requests"),
+    markRequestsSeen: () => call("/my-requests/seen", { method: "POST" }),
     listRequests: (status = "pending") => call(`/deletion-requests?status=${status}`),
     approveRequest: (id, note) =>
       call(`/deletion-requests/${id}/approve`, { method: "POST", body: note ? { note } : undefined }),

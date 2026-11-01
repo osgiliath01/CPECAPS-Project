@@ -71,6 +71,9 @@ def ensure_schema():
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP WITH TIME ZONE",
         "CREATE INDEX IF NOT EXISTS ix_projects_is_archived ON projects (is_archived)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE",
+        # Existing requests count as already seen; new answers start unseen
+        "ALTER TABLE deletion_requests ADD COLUMN IF NOT EXISTS requester_seen BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE deletion_requests ALTER COLUMN requester_seen SET DEFAULT FALSE",
     ]
     with engine.begin() as conn:
         for sql in statements:
