@@ -529,6 +529,15 @@ Each account can be signed in on **one device (browser tab) at a time** (`sessio
 - **Logged** in the Activity Log: *Sign-in from another device*, *Other device allowed / blocked*, *Signed out*.
 - **Settings** (`Backend\.env`): `SINGLE_SESSION=false` turns the rule off. `SINGLE_SESSION_EXEMPT=loadtest,loadtestadmin` lists accounts it doesn't apply to: **the load test needs this**, since its simulated users share accounts.
 
+### 4.18 Mobile view
+
+Below 640px wide (phones), the app switches layout (`App.css`, section *Phones*; checked at 390px and 360px):
+
+- **Header:** the logo, the live dot (dot only) and a compact menu button (picture only) on one row; search and filters below.
+- **Tables become cards** (Voucher Control, Summary of Expenses, Activity Log, requests, Manage users, My requests, My activity): one card per row, each value with its column name on the left. The first column (project title or entry date) is the card's heading, and the sort buttons stay as a row above. `utils/tableLabels.js` copies each column's header onto its cells (`data-label`), so the table components didn't need changing; a new table with the class `vtable` or `review-table` works the same way automatically.
+- **Pages:** smaller titles, buttons side by side, extra space at the bottom for the chat button, tabs that scroll sideways, stat cards in two columns (one below 380px), dialogs at full width that scroll when tall, and larger touch targets.
+- **Testing:** build the demo (`$env:VITE_DEMO="true"; npx vite build --base ./`) and open it in the browser's device mode (F12, then the phone icon), or open the shared link on a phone.
+
 ## 5. Database changes
 
 All changes are applied automatically when the backend starts:
