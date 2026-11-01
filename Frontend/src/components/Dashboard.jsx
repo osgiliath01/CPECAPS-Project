@@ -11,6 +11,7 @@ import ImportDialog from "./ImportDialog";
 import logo from "../assets/logo.webp";
 import UserPanel from "./UserPanel";
 import LoginRequestDialog from "./LoginRequestDialog";
+import HelpCenter from "./HelpCenter";
 import { bulkMessage } from "../hooks/useSelection";
 
 const FILTERS = [
@@ -70,7 +71,10 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
   const [dialog, setDialog] = useState(null); // { mode: "create" | "edit", entry? }
   const [pwOpen, setPwOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
-  const [page, setPage] = useState("main"); // "main" | "user"
+  const [page, setPage] = useState("main"); // "main" | "user" | "help"
+  // "Take me there" from a help guide: which User Panel tab to open (a new key re-opens it there)
+  const [userSection, setUserSection] = useState(null);
+  const [panelKey, setPanelKey] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [liveStatus, setLiveStatus] = useState("connecting");
@@ -402,7 +406,11 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
             profile={profile}
             onMyRequests={() => setPage("user")}
             onHome={goHome}
-            onUserPanel={() => setPage("user")}
+            onUserPanel={() => {
+              setUserSection(null);
+              setPage("user");
+            }}
+            onHelp={() => setPage("help")}
             onLogout={onLogout}
           />
         </div>
@@ -410,8 +418,22 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
 
       <main className="main">
 
-        {page === "user" ? (
+        {page === "help" ? (
+          <HelpCenter
+            user={user}
+            onGo={(target) => {
+              if (target.page === "user") {
+                setUserSection(target.section || null);
+                setPanelKey((k) => k + 1);
+                setPage("user");
+              } else goHome();
+              window.scrollTo(0, 0);
+            }}
+          />
+        ) : page === "user" ? (
           <UserPanel
+            key={panelKey}
+            initialSection={userSection}
             api={api}
             user={user}
             version={liveVersion}

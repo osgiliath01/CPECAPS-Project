@@ -16,6 +16,7 @@ export default function AdminMenu({
   user,
   onUserPanel,
   onHome,
+  onHelp,
   onLogout,
   pendingCount = 0,
   accountsCount = 0,
@@ -86,6 +87,17 @@ export default function AdminMenu({
               label={user.is_superuser ? "pending requests" : "new responses"}
             />
           </button>
+          {onHelp && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onHelp();
+              }}
+            >
+              User Guides
+            </button>
+          )}
           <button role="menuitem" onClick={onLogout}>
             Sign out
           </button>

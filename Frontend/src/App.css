@@ -332,6 +332,47 @@ button { cursor: pointer; }
 .bulk-list { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; max-height: 9rem; overflow-y: auto; font-size: 0.92rem; }
 .log-badge.act-permanent_delete { background: #f9d6d6; }
 
+/* User Guides */
+.help-top { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.help-search { flex: 1 1 18rem; font: inherit; padding: 0.7rem 1rem; border: 1.5px solid #8a929b; border-radius: 999px; }
+.help-meter { display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; color: var(--muted); }
+.help-bar { width: 8rem; height: 0.5rem; border-radius: 999px; background: var(--line); overflow: hidden; }
+.help-bar span { display: block; height: 100%; background: #4cd17a; transition: width 0.3s; }
+.help-cats { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.help-cat { font: inherit; font-size: 0.9rem; padding: 0.4rem 0.9rem; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; cursor: pointer; }
+.help-cat[aria-pressed="true"] { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+.help-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.help-card { border: 1.5px solid var(--line); border-radius: 1rem; background: #fff; overflow: hidden; }
+.help-card.open { border-color: #ffbc13; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06); }
+.help-card-head {
+  width: 100%; display: flex; align-items: center; gap: 0.9rem; padding: 0.85rem 1rem;
+  background: none; border: 0; font: inherit; text-align: left; cursor: pointer;
+}
+.help-card-head:hover { background: #fafafa; }
+.help-check {
+  flex-shrink: 0; width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--line);
+  display: grid; place-items: center; font-weight: 700; color: #fff;
+}
+.help-card.done .help-check { background: #4cd17a; border-color: #4cd17a; }
+.help-card-text { flex: 1; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.help-card-title { font-weight: 600; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.help-card-sub { font-size: 0.88rem; }
+.help-role { font-size: 0.72rem; font-weight: 600; }
+.help-chevron { color: var(--muted); }
+.help-walk { padding: 0.2rem 1.2rem 1.1rem 3.5rem; }
+.help-progress { display: flex; gap: 0.35rem; margin: 0.3rem 0 0.6rem; }
+.help-dot { width: 1.6rem; height: 0.35rem; border-radius: 999px; border: 0; padding: 0; background: var(--line); cursor: pointer; }
+.help-dot.past { background: #ffd970; }
+.help-dot.on { background: #ffbc13; }
+.help-step-count { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.help-step { margin: 0.35rem 0 0.9rem; font-size: 1.05rem; line-height: 1.55; min-height: 3.2rem; }
+.help-steps { margin: 0.4rem 0 0.8rem; padding-left: 1.2rem; line-height: 1.55; }
+.help-steps li { margin-bottom: 0.4rem; }
+.help-nav { display: flex; gap: 0.6rem; }
+.help-tips { margin-top: 0.9rem; padding: 0.5rem 0.8rem; border-radius: 0.7rem; background: #fff8e1; }
+.help-tips p { margin: 0.2rem 0; }
+.help-extra { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin-top: 0.9rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+
 /* Admins: backup status on the profile card */
 .backup-status { width: 100%; margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--line); text-align: left; }
 .backup-status p { margin: 0.2rem 0 0; display: flex; gap: 0.5rem; align-items: baseline; }
@@ -768,6 +809,15 @@ button { cursor: pointer; }
 
   /* Inactivity warning: full width, above the chat button */
   .idle-warning { left: 0.7rem; right: 0.7rem; bottom: 5rem; transform: none; max-width: none; justify-content: space-between; }
+
+  /* Help page */
+  .help-walk { padding: 0.2rem 0.9rem 1rem; }
+  .help-card-head { padding: 0.8rem 0.8rem; gap: 0.7rem; }
+  .help-meter { width: 100%; }
+  .help-bar { flex: 1; }
+  .help-nav .pill { flex: 1; }
+  .help-cats { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .help-cat { flex-shrink: 0; }
 
   /* Chat button a little smaller and out of the way */
   .chat-fab { width: 52px; height: 52px; right: 1rem; bottom: 1rem; }

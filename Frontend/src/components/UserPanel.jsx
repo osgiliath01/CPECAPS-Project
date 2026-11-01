@@ -19,6 +19,7 @@ export default function UserPanel({
   profile,
   onProfileChanged,
   onSeen,
+  initialSection,
   onPassword,
   onLogout,
   onChanged,
@@ -35,11 +36,12 @@ export default function UserPanel({
   // otherwise Manage users if an account is waiting, otherwise Activity Log.
   // Staff open on My requests.
   const [section, setSection] = useState(() =>
-    !isAdmin
+    initialSection ||
+    (!isAdmin
       ? "requests"
       : !(pending?.requests || pending?.resets) && (pending?.accounts || pending?.names)
         ? "users"
-        : "activity"
+        : "activity")
   );
 
   const tabs = isAdmin

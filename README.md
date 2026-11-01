@@ -550,6 +550,16 @@ A sign-in ends after **30 minutes without activity**, not 30 minutes after signi
 - **A computer that went to sleep** is signed out when it wakes, if more than 30 minutes have passed.
 - **Timing** uses each computer's own clock, measured from when the sign-in arrived, so a wrong clock doesn't matter. The length is set with `SESSION_IDLE_MINUTES` in `Backend\.env` (default 30).
 
+### 4.17b User Guides
+
+**User Guides** in the user menu opens a page of step-by-step guides (`components/HelpCenter.jsx`, content in `help/guides.js`).
+
+- **30 guides** in six topics: getting started, projects & entries, requests & approvals, your account, admin tools, and the assistant & phone use. Each person only sees guides for their role. For example, staff see *Ask for an entry to be changed*; admins see *Edit an entry* and the admin tools, marked **Admins**.
+- **Interactive:** open a guide and go through it one step at a time with **Next** / **← Back** (or tap the progress bar), or use **Show all steps**. **Take me there →** jumps to the right screen, including the right User Panel tab.
+- **Search** matches titles, steps and tips. When only one guide matches, it opens straight away.
+- **Mark as done ✓** ticks a guide off. Progress (*5 of 24 done*) is remembered in that browser for each user; **Reset** clears it.
+- **Keeping it current:** button and label names in the steps are written exactly as they appear in the app (shown in bold). When a screen changes, update its guide in `help/guides.js`.
+
 ### 4.18 Mobile view
 
 Below 640px wide (phones), the app switches layout (`App.css`, section *Phones*; checked at 390px and 360px):
