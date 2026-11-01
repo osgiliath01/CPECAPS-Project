@@ -4,6 +4,7 @@ import Avatar, { squarePhoto } from "./Avatar";
 import NameRequests from "./NameRequests";
 import MyActivity from "./MyActivity";
 import SecurityInfo from "./SecurityInfo";
+import MyStats from "./MyStats";
 import { ActivityLogContent } from "./ActivityLog";
 import { MyRequestsContent } from "./MyRequests";
 import { UsersContent } from "./UsersDialog";
@@ -98,6 +99,8 @@ export default function UserPanel({
 
         {/* Right: the working area. Depends on the role. */}
         <div className="userpanel-right">
+          <MyStats api={api} user={user} version={version} />
+
           <div className="folder-tabs" role="tablist" aria-label="User Panel sections">
             {tabs.map((t) => (
               <button

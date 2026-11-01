@@ -4,6 +4,7 @@
 - Staff ask for a name change and an admin approves or rejects it (with an optional note).
   Admins change their own name directly. Every change is written to the Activity Log."""
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
@@ -337,6 +338,91 @@ def sign_out_everywhere(
                  f"'{current_user.username}' signed out on all devices", "user", current_user.id)
     db.commit()
     return None
+
+
+# ---------- My stats ----------
+
+MANILA = timezone(timedelta(hours=8))
+
+
+class MyStats(BaseModel):
+    month_label: str                  # e.g. "November 2026"
+    entries_this_month: int
+    amount_this_month: Decimal
+    entries_total: int
+    amount_total: Decimal
+    projects_total: int               # projects with at least one of your entries
+    edits_this_month: int             # entries you edited (admins) or asked to edit (staff)
+    requests_pending: int
+    requests_approved: int
+    requests_rejected: int
+    reviews_this_month: Optional[int] = None   # admins: requests you approved or rejected
+
+
+@router.get("/me/stats", response_model=MyStats)
+def my_stats(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Numbers for the signed-in user's own work. Entries count while they're active (not
+    archived); "this month" follows Philippine time."""
+    now = datetime.now(MANILA)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    username = current_user.username
+    d = models.Disbursement
+    mine = [
+        or_(d.created_by == username, d.created_by.like(f"{username} | %")),  # older data: "username | Name"
+        d.is_archived.is_(False),
+    ]
+
+    def count_and_total(*extra):
+        n, total = (
+            db.query(func.count(d.id), func.coalesce(func.sum(d.amount), 0))
+            .join(models.Project, models.Project.id == d.project_id)
+            .filter(*mine, models.Project.is_archived.is_(False), *extra)
+            .one()
+        )
+        return n, total
+
+    month_n, month_total = count_and_total(d.created_at >= month_start)
+    all_n, all_total = count_and_total()
+    projects = (
+        db.query(func.count(func.distinct(d.project_id)))
+        .join(models.Project, models.Project.id == d.project_id)
+        .filter(*mine, models.Project.is_archived.is_(False))
+        .scalar()
+    ) or 0
+
+    log = models.ActivityLog
+    edits = (
+        db.query(func.count(log.id))
+        .filter(log.actor == username, log.action.in_(("update", "edit_requested")), log.created_at >= month_start)
+        .scalar()
+    )
+    req = models.DeletionRequest
+    by_status = dict(
+        db.query(req.status, func.count(req.id)).filter(req.requested_by == username).group_by(req.status).all()
+    )
+    reviews = None
+    if current_user.is_superuser:
+        reviews = (
+            db.query(func.count(req.id))
+            .filter(req.reviewed_by == username, req.reviewed_at >= month_start)
+            .scalar()
+        )
+    return {
+        "month_label": now.strftime("%B %Y"),
+        "entries_this_month": month_n,
+        "amount_this_month": month_total,
+        "entries_total": all_n,
+        "amount_total": all_total,
+        "projects_total": projects,
+        "edits_this_month": edits or 0,
+        "requests_pending": by_status.get("pending", 0),
+        "requests_approved": by_status.get("approved", 0),
+        "requests_rejected": by_status.get("rejected", 0),
+        "reviews_this_month": reviews,
+    }
 
 
 # ---------- Review (admins only) ----------

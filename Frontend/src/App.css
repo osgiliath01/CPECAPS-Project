@@ -310,6 +310,15 @@ button { cursor: pointer; }
 .security-hint { margin: 0.4rem 0; padding: 0.4rem 0.6rem; border-radius: 0.6rem; background: #fdecea; }
 .security-confirm { margin-top: 0.4rem; }
 .my-activity-foot { margin-top: 0.6rem; }
+/* User Panel: your numbers */
+.stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.8rem; margin-bottom: 1.2rem; }
+.stat-card {
+  display: flex; flex-direction: column; gap: 0.2rem; padding: 0.9rem 1rem;
+  background: #fff; border: 1.5px solid var(--line); border-radius: 1rem;
+}
+.stat-label { font-size: 0.8rem; color: var(--muted); }
+.stat-value { font-size: 1.6rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.stat-sub { font-size: 0.8rem; color: var(--muted); }
 .log-badge.act-signed_out_everywhere { background: #fff0c2; }
 /* One device at a time: the waiting sign-in, and the prompt on the signed-in device */
 .login-waiting { display: flex; flex-direction: column; gap: 0.6rem; }

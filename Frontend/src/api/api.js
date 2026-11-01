@@ -178,6 +178,7 @@ export function createApi(token, onUnauthorized) {
     changeName: (newName) => call("/me/name", { method: "POST", body: { new_name: newName } }),
     myActivity: (page = 1, size = 20) => call(`/me/activity?page=${page}&size=${size}`),
     mySecurity: () => call("/me/security"),
+    myStats: () => call("/me/stats"),
     signOutEverywhere: () => call("/me/sign-out-everywhere", { method: "POST" }),
     cancelNameRequest: () => call("/me/name", { method: "DELETE" }),
     listNameRequests: () => call("/name-requests"),
