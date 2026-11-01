@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 // The device that's signed in: someone is signing in to this account on another device.
 // Allow signs this device out and lets them in; Block keeps this device signed in.
-export default function LoginRequestDialog({ api, request, onAllowed, onBlocked, onGone }) {
+export default function LoginRequestDialog({ api, request, onAllowed, onBlocked, onGone, onRefresh }) {
   const ref = useRef(null);
   const [left, setLeft] = useState(request.expires_in);
   const [busy, setBusy] = useState(false);
@@ -22,6 +22,14 @@ export default function LoginRequestDialog({ api, request, onAllowed, onBlocked,
   useEffect(() => {
     if (left <= 0) onGone(request.id); // the other device stopped waiting
   }, [left, request.id, onGone]);
+
+  // Check every few seconds that the other device is still waiting, so the prompt closes
+  // even if the live update about a cancel was missed or its tab was simply closed
+  useEffect(() => {
+    if (!onRefresh) return;
+    const timer = setInterval(onRefresh, 5000);
+    return () => clearInterval(timer);
+  }, [onRefresh]);
 
   async function answer(allow) {
     setBusy(true);

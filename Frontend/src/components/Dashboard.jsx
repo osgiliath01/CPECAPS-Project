@@ -23,8 +23,18 @@ const SIGNED_OUT_ELSEWHERE =
 export default function Dashboard({ api, user: sessionUser, onLogout, onSessionEnded = onLogout }) {
   // Sign-ins from other devices waiting for this device to allow or block them
   const [loginRequests, setLoginRequests] = useState([]);
+  const shownRequestRef = useRef(null); // the request the prompt is showing
+  shownRequestRef.current = loginRequests[0]?.id ?? null;
   const loadLoginRequests = useCallback(
-    () => (api.myLoginChallenges ? api.myLoginChallenges().then(setLoginRequests, () => {}) : Promise.resolve()),
+    () =>
+      api.myLoginChallenges
+        ? api.myLoginChallenges().then((list) => {
+            // The other device cancelled or closed its tab before this one answered
+            if (shownRequestRef.current && !list.some((r) => r.id === shownRequestRef.current))
+              setToast("The other device stopped trying to sign in.");
+            setLoginRequests(list);
+          }, () => {})
+        : Promise.resolve(),
     [api]
   );
   useEffect(() => {
@@ -190,7 +200,14 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
       setLiveVersion((v) => v + 1);
       if (resync || events.some((e) => e.entity_type === "user" && e.entity_id === profileIdRef.current))
         setProfileVersion((v) => v + 1); // e.g. an admin approved this user's name change
-      if (resync || events.some((e) => e.action === "login_challenge" && e.entity_id === profileIdRef.current))
+      if (
+        resync ||
+        events.some(
+          (e) =>
+            (e.action === "login_challenge" || e.action === "login_challenge_cancelled") &&
+            e.entity_id === profileIdRef.current
+        )
+      )
         loadLoginRequestsRef.current(); // someone is signing in to this account elsewhere
       const others = [
         ...new Set(
@@ -467,6 +484,7 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
             setToast("Sign-in blocked. If it wasn't you, change your password.");
           }}
           onGone={dropLoginRequest}
+          onRefresh={loadLoginRequests}
         />
       )}
       {pwOpen && (

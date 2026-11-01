@@ -177,6 +177,8 @@ class LoginChallenge(Base):
     # pending | allowed | denied | expired | cancelled | used
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     decided_at = Column(DateTime(timezone=True), nullable=True)
+    # Last time the new device checked back; if it stops (tab closed), the attempt has ended
+    polled_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class UserAvatar(Base):

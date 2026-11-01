@@ -45,6 +45,7 @@ const ACTIONS = [
   ["login_challenge", "Sign-in from another device"],
   ["login_challenge_allowed", "Other device allowed"],
   ["login_challenge_denied", "Other device blocked"],
+  ["login_challenge_cancelled", "Other device cancelled"],
   ["login", "Signed in"],
   ["login_failed", "Failed sign-in"],
   ["password_change", "Changed password"],

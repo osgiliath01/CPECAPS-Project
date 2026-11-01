@@ -33,6 +33,7 @@ router = APIRouter(tags=["Authentication"])
 SESSION_STALE_SECONDS = 75   # no sign of life for this long: the device counts as gone
 TOUCH_SECONDS = 30           # how often an open live connection reports that the device is there
 CHALLENGE_SECONDS = 180      # how long a new device waits for an answer
+ABANDONED_SECONDS = 12       # the new device checks every 2 s; silent this long = it gave up (tab closed)
 TOKEN_MINUTES = 30
 
 
@@ -99,7 +100,7 @@ def describe_device(user_agent: str) -> str:
 
 def create_challenge(db: Session, user: models.User, user_agent: str) -> models.LoginChallenge:
     challenge = models.LoginChallenge(user_id=user.id, secret=secrets.token_urlsafe(24),
-                                      device=describe_device(user_agent)[:120])
+                                      device=describe_device(user_agent)[:120], polled_at=_now())
     db.add(challenge)
     db.flush()
     activity.log(db, user.username, "login_challenge",
@@ -109,7 +110,11 @@ def create_challenge(db: Session, user: models.User, user_agent: str) -> models.
 
 
 def _expired(challenge: models.LoginChallenge) -> bool:
-    return (_now() - _aware(challenge.created_at)).total_seconds() > CHALLENGE_SECONDS
+    """Over: waited too long, or the new device stopped checking back (e.g. its tab was closed)."""
+    if (_now() - _aware(challenge.created_at)).total_seconds() > CHALLENGE_SECONDS:
+        return True
+    polled = _aware(challenge.polled_at) or _aware(challenge.created_at)
+    return (_now() - polled).total_seconds() > ABANDONED_SECONDS
 
 
 # ---------- The new device ----------
@@ -135,10 +140,11 @@ def challenge_status(challenge_id: int, payload: ChallengeSecret, db: Session = 
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account can't sign in.")
 
     if challenge.status == "pending":
+        challenge.polled_at = _now()  # the new device is still waiting
         if not session_is_live(user):
             challenge.status = "allowed"  # the other device has gone: no one left to ask
             challenge.decided_at = _now()
-        elif _expired(challenge):
+        elif (_now() - _aware(challenge.created_at)).total_seconds() > CHALLENGE_SECONDS:
             challenge.status = "expired"
             db.commit()
             return {"status": "expired"}
@@ -166,6 +172,12 @@ def cancel_challenge(challenge_id: int, payload: ChallengeSecret, db: Session = 
     if challenge.status == "pending":
         challenge.status = "cancelled"
         challenge.decided_at = _now()
+        user = db.get(models.User, challenge.user_id)
+        if user:
+            # Also tells the signed-in device (through its live connection) to close its prompt
+            activity.log(db, user.username, "login_challenge_cancelled",
+                         f"Sign-in to '{user.username}' from {challenge.device} was cancelled on that device",
+                         "user", user.id, {"challenge_id": challenge.id})
         db.commit()
     return None
 
@@ -193,9 +205,12 @@ def my_login_challenges(
     )
     out = []
     for c in rows:
+        if _expired(c):  # waited too long, or the new device gave up without cancelling
+            c.status = "expired"
+            continue
         left = CHALLENGE_SECONDS - (_now() - _aware(c.created_at)).total_seconds()
-        if left > 0:
-            out.append({"id": c.id, "device": c.device, "created_at": c.created_at, "expires_in": int(left)})
+        out.append({"id": c.id, "device": c.device, "created_at": c.created_at, "expires_in": int(left)})
+    db.commit()
     return out
 
 
