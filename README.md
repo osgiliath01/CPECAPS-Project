@@ -548,6 +548,32 @@ Below 640px wide (phones), the app switches layout (`App.css`, section *Phones*;
 - **Pages:** smaller titles, buttons side by side, extra space at the bottom for the chat button, tabs that scroll sideways, stat cards in two columns (one below 380px), dialogs at full width that scroll when tall, and larger touch targets.
 - **Testing:** build the demo (`$env:VITE_DEMO="true"; npx vite build --base ./`) and open it in the browser's device mode (F12, then the phone icon), or open the shared link on a phone.
 
+### 4.19 Backups (encrypted, synced to Google Drive)
+
+A `backup` container (`Backend/backup/backup.sh`) backs up the whole database every night.
+
+- **When:** daily from **2:00 AM** (Philippine time). If the server was off or asleep then, the backup runs as soon as it's on again. After a failure it tries again an hour later.
+- **What:** everything in `caic_db` (entries, projects, archived items, users, requests, Activity Log, profile pictures), with `pg_dump` while the app keeps running.
+- **Encrypted:** each file is encrypted with **AES-256** (GnuPG) using `BACKUP_PASSPHRASE` from `Backend\.env` before it's written. The unencrypted dump only exists briefly inside the container, never in the backups folder, so the copy in Google Drive can't be read without the password. **Keep a copy of `BACKUP_PASSPHRASE` somewhere other than the server** (a password manager, or printed and stored safely): if the server is lost, so is `.env`, and the backups can't be opened without it.
+- **Checked:** every backup is decrypted and read back (`pg_restore --list`) before it's kept.
+- **Kept:** `backups\daily` (last 7), `backups\weekly` (4), `backups\monthly` (6). Older ones are deleted automatically. Manual backups go to `backups\manual` and aren't deleted.
+- **Where:** the `backups` folder next to `deploy.ps1` (or `BACKUP_DIR` in `Backend\.env`). It's ignored by Git.
+- **Google Drive:** install **Google Drive for desktop** on the server and sign in with the account that should hold the backups. In its settings, go to **Folders from your computer > Add folder**, choose the `backups` folder, and select **Sync with Google Drive**. Each new backup is then uploaded, and old ones are removed from Drive when they're rotated out (they stay in Drive's trash for 30 days).
+- **In the app:** each backup is logged (*Backup saved* / *Backup FAILED*, record type *Backups*). Admins see the status on their profile card in the User Panel: green when the last backup was within a day, yellow when it's older, red when the last one failed.
+
+**By hand** (PowerShell, project folder):
+
+```powershell
+.\backup.ps1                       # back up now (e.g. before a big import or moving the server)
+.\restore.ps1 -List                # show the backups
+.\restore.ps1 -File daily\caic_db_2026-11-02_020000.dump.gpg               # restore into caic_db_restore, to check it
+.\restore.ps1 -File daily\caic_db_2026-11-02_020000.dump.gpg -ReplaceLive  # replace the real data
+```
+
+A restore without `-ReplaceLive` goes into a separate database, `caic_db_restore` (open it in pgAdmin to check), and doesn't touch the real data. With `-ReplaceLive`, after you type YES, it backs up the current data, swaps in the restored copy, keeps the old database as `caic_db_replaced_<date>`, and restarts the backend. **Test a restore once a month**: it's the only way to know the backups work.
+
+To restore a file from Google Drive on another computer, put it in that server's `backups` folder (same `BACKUP_PASSPHRASE` in its `.env`) and use `restore.ps1` the same way.
+
 ## 5. Database changes
 
 All changes are applied automatically when the backend starts:

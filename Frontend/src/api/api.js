@@ -218,6 +218,7 @@ export function createApi(tokenSource, onUnauthorized) {
     myActivity: (page = 1, size = 20, signins = true) =>
       call(`/me/activity?page=${page}&size=${size}&signins=${signins}`),
     mySecurity: () => call("/me/security"),
+    backupStatus: () => call("/backup-status"),
     myStats: () => call("/me/stats"),
     signOutEverywhere: () => call("/me/sign-out-everywhere", { method: "POST" }),
     cancelNameRequest: () => call("/me/name", { method: "DELETE" }),

@@ -136,6 +136,11 @@ try {
     if (-not (Test-Path $envFile)) {
         throw "Backend\.env is missing. Copy Backend\.env.example to Backend\.env and set JWT_SECRET_KEY (see README)."
     }
+    # Backups folder (see Backend\backup): BACKUP_DIR from Backend\.env, else .\backups here
+    $configured = Select-String -Path $envFile -Pattern '^\s*BACKUP_DIR\s*=\s*(\S.*)$' | Select-Object -First 1
+    $backupDir = if ($configured) { $configured.Matches[0].Groups[1].Value.Trim().Trim('"') } else { Join-Path $Root "backups" }
+    if (-not $configured) { $env:BACKUP_DIR = $backupDir }
+    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
     docker compose -p $Project -f $compose --env-file $envFile up -d --build
     Assert-Ok "Building and starting the stack"
     Set-Content -Path $stateFile -Value $commit -ErrorAction Stop

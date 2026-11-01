@@ -5,6 +5,7 @@ import NameRequests from "./NameRequests";
 import MyActivity from "./MyActivity";
 import SecurityInfo from "./SecurityInfo";
 import MyStats from "./MyStats";
+import BackupStatus from "./BackupStatus";
 import { ActivityLogContent } from "./ActivityLog";
 import { MyRequestsContent } from "./MyRequests";
 import { UsersContent } from "./UsersDialog";
@@ -86,6 +87,7 @@ export default function UserPanel({
           </dl>
 
           <SecurityInfo api={api} version={version} onLogout={onLogout} />
+          {isAdmin && <BackupStatus api={api} version={version} />}
 
           <div className="profile-actions">
             <button className="pill create" onClick={onPassword}>

@@ -317,6 +317,18 @@ button { cursor: pointer; }
 }
 .feed-toggle { display: inline-flex; align-items: center; gap: 0.45rem; margin-bottom: 0.6rem; font-size: 0.9rem; cursor: pointer; }
 .feed-toggle input { width: 1.05rem; height: 1.05rem; margin: 0; }
+/* Admins: backup status on the profile card */
+.backup-status { width: 100%; margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--line); text-align: left; }
+.backup-status p { margin: 0.2rem 0 0; display: flex; gap: 0.5rem; align-items: baseline; }
+.backup-dot { flex-shrink: 0; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: #4cd17a; transform: translateY(0.05rem); }
+.backup-status.warn .backup-dot { background: #ffbc13; }
+.backup-status.bad .backup-dot { background: var(--danger); }
+.backup-status.bad p:first-of-type, .backup-status.warn p:first-of-type { font-weight: 600; }
+.backup-detail { display: block !important; overflow-wrap: anywhere; }
+.log-badge.act-backup { background: #d7efdc; }
+.log-badge.act-backup_failed { background: #f9d6d6; }
+.log-badge.act-restore { background: #fff0c2; }
+
 /* About to be signed out for inactivity */
 .idle-warning {
   position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); z-index: 60;

@@ -92,6 +92,33 @@ services:
   # Local AI model server for the chatbot. Private: no published port, so only the
   # backend containers can reach it (at http://ollama:11434). Download a model once with:
   #   docker compose exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+  # Nightly encrypted backups of the database (Backend/backup/backup.sh). Writes to the backups
+  # folder (BACKUP_DIR; deploy.ps1 uses .\backups next to it by default), which Google Drive for
+  # desktop syncs. Run by hand with .\backup.ps1; restore with .\restore.ps1.
+  backup:
+    build: ./backup
+    container_name: caic-backup
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Backend/.env}
+      PGDATABASE: caic_db
+      # Encrypts every backup. Without it the backups can't be opened: keep a copy somewhere safe
+      BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:?Set BACKUP_PASSPHRASE in Backend/.env}
+      TZ: Asia/Manila
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
+      KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
+      KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-6}
+    volumes:
+      - type: bind
+        source: ${BACKUP_DIR:?Set BACKUP_DIR (deploy.ps1 sets it to the backups folder)}
+        target: /backups
+    depends_on:
+      db:
+        condition: service_healthy
+
   ollama:
     image: ollama/ollama
     container_name: caic-ollama

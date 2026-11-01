@@ -258,6 +258,35 @@ class ArchivedProject(BaseModel):
 # ROUTES (admins only)
 # ==========================================
 
+class BackupStatus(BaseModel):
+    last_ok_at: Optional[datetime]
+    last_ok: Optional[str]
+    last_failed_at: Optional[datetime]
+    last_failed: Optional[str]
+
+
+@router.get("/backup-status", response_model=BackupStatus)
+def backup_status(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_superuser),
+):
+    """Admins only: the latest successful and failed backup, as recorded by the backup container."""
+    def latest(action):
+        return (
+            db.query(models.ActivityLog.created_at, models.ActivityLog.summary)
+            .filter(models.ActivityLog.action == action)
+            .order_by(models.ActivityLog.created_at.desc())
+            .first()
+        )
+    ok, failed = latest("backup"), latest("backup_failed")
+    return {
+        "last_ok_at": ok[0] if ok else None,
+        "last_ok": ok[1] if ok else None,
+        "last_failed_at": failed[0] if failed else None,
+        "last_failed": failed[1] if failed else None,
+    }
+
+
 @router.get("/activity-logs", response_model=ActivityLogPage)
 def list_activity(
     action: Optional[str] = None,

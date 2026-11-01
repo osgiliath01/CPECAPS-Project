@@ -26,6 +26,9 @@ const ACTIONS = [
   ["edit_rejected", "Edit rejected"],
   ["import", "Imported file"],
   ["export", "Exported to Excel"],
+  ["backup", "Backup saved"],
+  ["backup_failed", "Backup FAILED"],
+  ["restore", "Database restored"],
   ["project_create", "Created project"],
   ["project_archive", "Archived project"],
   ["project_restore", "Restored project"],
@@ -66,6 +69,7 @@ const RECORD_TYPES = [
   ["disbursement", "Entries"],
   ["project", "Projects"],
   ["user", "Accounts"],
+  ["backup", "Backups"],
 ];
 //const PAGE = 50;
 

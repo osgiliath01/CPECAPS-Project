@@ -9,3 +9,6 @@ tasks.db
 .deploy/
 # database backups (contain all the data: never commit)
 *.sql
+backups/
+*.dump
+*.gpg
