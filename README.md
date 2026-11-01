@@ -490,6 +490,15 @@ The script works in `.deploy\live` and `.deploy\preview` (git worktrees, ignored
 
 ---
 
+### 4.11a CSV export (per project)
+
+**Export CSV** in a project's *Summary of Expenses* downloads all of that project's active entries (not only what the search shows), oldest first, as `<Project-Name>_<date>.csv` (`GET /projects/{title}/export`).
+
+- **Columns:** `project_title, date, cv_no, payee, amount` (the import format, so the file can be imported again; the import ignores the rest), then `created_by, created_at, updated_by, updated_at` (full names; times in Philippine time).
+- **Opens in Excel:** UTF-8 with a BOM, so ñ and the like show correctly. Amounts are plain numbers with 2 decimals.
+- **Safe in Excel:** text that starts like a formula (`=`, `+`, `-`, `@`) gets a leading `'` so Excel shows it instead of running it.
+- Anyone signed in can export. Each export is logged (*Exported CSV*). The button is disabled for a project with no entries.
+
 ### 4.16 Profile picture and name (User Panel)
 
 Everyone's **User Panel** (menu at the top right) shows their profile card:

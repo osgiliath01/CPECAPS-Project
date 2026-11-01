@@ -7,20 +7,23 @@ New project titles are created automatically. One Activity Log entry records the
 """
 import csv
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import activity
+import crud
 import database
 import models
 import security
 
 router = APIRouter(tags=["Import"])
+
+MANILA = timezone(timedelta(hours=8))
 
 REQUIRED = ["project_title", "date", "cv_no", "payee", "amount"]
 MAX_BYTES = 5 * 1024 * 1024
@@ -216,3 +219,80 @@ async def import_disbursements(
     db.commit()
     report["imported"] = len(valid)
     return report
+
+
+# ==========================================
+# EXPORT
+# ==========================================
+
+# The first five columns are the import format, so an exported file can be imported again
+# (the extra columns are ignored by the import).
+EXPORT_COLUMNS = ["project_title", "date", "cv_no", "payee", "amount",
+                  "created_by", "created_at", "updated_by", "updated_at"]
+
+
+def _safe_cell(value) -> str:
+    """Text that starts like a formula (=, +, -, @) gets a leading ' so Excel shows it as text
+    instead of running it."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+def _local_stamp(moment) -> str:
+    if not moment:
+        return ""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(MANILA).strftime("%Y-%m-%d %H:%M")
+
+
+def _file_name(title: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in " -_" else " " for ch in title).strip()
+    safe = "-".join(safe.split())[:80] or "project"
+    return f"{safe}_{datetime.now(MANILA):%Y-%m-%d}.csv"
+
+
+@router.get("/projects/{project_title}/export")
+def export_project(
+    project_title: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """A project's active entries as a CSV file (UTF-8, opens in Excel), oldest first."""
+    summary = crud.get_project_summary(db, project_title)
+    if not summary:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    entries = sorted(summary["entries"], key=lambda e: (e.date, e.id))
+
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\r\n")
+    writer.writerow(EXPORT_COLUMNS)
+    for e in entries:
+        writer.writerow([
+            _safe_cell(summary["project_title"]),
+            e.date.isoformat(),
+            _safe_cell(e.cv_no),
+            _safe_cell(e.payee),
+            f"{e.amount:.2f}",
+            _safe_cell(getattr(e, "created_by_name", None) or e.created_by),
+            _local_stamp(e.created_at),
+            _safe_cell(getattr(e, "updated_by_name", None) or e.updated_by),
+            _local_stamp(e.updated_at),
+        ])
+
+    project = db.query(models.Project).filter(models.Project.title == summary["project_title"]).first()
+    activity.log(db, current_user.username, "export",
+                 f"Exported '{summary['project_title']}' to CSV ({len(entries)} entr{'y' if len(entries) == 1 else 'ies'})",
+                 "project", project.id if project else None)
+    db.commit()
+
+    name = _file_name(summary["project_title"])
+    # BOM first so Excel reads it as UTF-8 (ñ, ₱ and the like show correctly)
+    return Response(
+        content="\ufeff" + out.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )

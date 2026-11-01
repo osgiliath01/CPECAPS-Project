@@ -9,6 +9,29 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
   const [sort, setSort] = useState({ key: "date", dir: "desc" });
   const [toDelete, setToDelete] = useState(null);
   const [reason, setReason] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+
+  // Downloads every entry of this project (not just what the search shows) as a CSV file
+  async function exportCsv() {
+    setExporting(true);
+    setExportError("");
+    try {
+      const { blob, filename } = await api.exportProject(summary.project_title);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setExportError(e.message);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -45,7 +68,15 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
           <p className="project-name">{summary.project_title}</p>
         </div>
         <div className="head-actions">
-          <button className="pill" disabled title="Export is not available yet"
+          <button
+            className="pill"
+            onClick={exportCsv}
+            disabled={exporting || !api?.exportProject || summary.entries.length === 0}
+            title={
+              summary.entries.length === 0
+                ? "This project has no entries to export"
+                : "Download all of this project's entries as a CSV file (opens in Excel)"
+            }
           >
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <path
@@ -57,7 +88,7 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
               strokeLinejoin="round"
             />
           </svg>
-            Export CSV
+            {exporting ? "Exporting…" : "Export CSV"}
           </button>
           <button className="pill create" onClick={onNew}>
             <span className="plus" aria-hidden="true">
@@ -67,6 +98,11 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
           </button>
         </div>
       </div>
+      {exportError && (
+        <p role="alert" className="error">
+          {exportError}
+        </p>
+      )}
 
       <section className="panel" aria-label="Summary of expenses">
         <table className="vtable">

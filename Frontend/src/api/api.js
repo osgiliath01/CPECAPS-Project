@@ -118,6 +118,29 @@ export function createApi(token, onUnauthorized) {
     listDisbursements: () => call(ROUTES.disbursements),
 
     getSummary: (title) => call(ROUTES.summary(title)),
+    // A project's entries as a CSV file: { blob, filename }
+    exportProject: async (title) => {
+      let res;
+      try {
+        res = await fetch(`${API_URL}/projects/${encodeURIComponent(title)}/export`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        throw new ApiError("Can't reach the server. Check your connection and that the API is running.", 0);
+      }
+      if (!res.ok) {
+        if (res.status === 401 && onUnauthorized) onUnauthorized();
+        let detail = "";
+        try {
+          detail = (await res.json()).detail;
+        } catch {
+          /* not JSON */
+        }
+        throw new ApiError(detail || `Export failed (${res.status}).`, res.status);
+      }
+      const match = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "");
+      return { blob: await res.blob(), filename: match ? match[1] : `${title}.csv` };
+    },
 
     createDisbursement: (body) =>
       call(ROUTES.disbursements, { method: "POST", body }),
