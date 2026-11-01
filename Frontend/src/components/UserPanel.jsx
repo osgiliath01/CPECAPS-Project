@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { fmtStamp } from "../utils/format";
 import Avatar, { squarePhoto } from "./Avatar";
 import NameRequests from "./NameRequests";
+import MyActivity from "./MyActivity";
+import SecurityInfo from "./SecurityInfo";
 import { ActivityLogContent } from "./ActivityLog";
 import { MyRequestsContent } from "./MyRequests";
 import { UsersContent } from "./UsersDialog";
@@ -29,11 +31,26 @@ export default function UserPanel({
 
   // Admins: open on whatever needs them. Activity Log if requests/resets are waiting,
   // otherwise Manage users if an account is waiting, otherwise Activity Log.
+  // Staff open on My requests.
   const [section, setSection] = useState(() =>
-    !(pending?.requests || pending?.resets) && (pending?.accounts || pending?.names) ? "users" : "activity"
+    !isAdmin
+      ? "requests"
+      : !(pending?.requests || pending?.resets) && (pending?.accounts || pending?.names)
+        ? "users"
+        : "activity"
   );
 
-  const title = !isAdmin ? "My requests" : section === "users" ? "Manage users" : "Activity Log";
+  const tabs = isAdmin
+    ? [
+        { key: "activity", label: "Activity Log", count: (pending?.requests || 0) + (pending?.resets || 0) },
+        { key: "users", label: "Manage users", count: waitingAccounts },
+        { key: "mine", label: "My activity", count: 0 },
+      ]
+    : [
+        { key: "requests", label: "My requests", count: pending?.responses || 0 },
+        { key: "mine", label: "My activity", count: 0 },
+      ];
+  const title = tabs.find((t) => t.key === section)?.label || "";
 
   return (
     <>
@@ -67,6 +84,8 @@ export default function UserPanel({
             )}
           </dl>
 
+          <SecurityInfo api={api} version={version} onLogout={onLogout} />
+
           <div className="profile-actions">
             <button className="pill create" onClick={onPassword}>
               Change password
@@ -79,37 +98,27 @@ export default function UserPanel({
 
         {/* Right: the working area. Depends on the role. */}
         <div className="userpanel-right">
-          {isAdmin && (
-            <div className="folder-tabs" role="tablist" aria-label="Administration sections">
+          <div className="folder-tabs" role="tablist" aria-label="User Panel sections">
+            {tabs.map((t) => (
               <button
+                key={t.key}
                 type="button"
                 role="tab"
-                aria-selected={section === "activity"}
+                aria-selected={section === t.key}
                 className="folder-tab"
-                onClick={() => setSection("activity")}
+                onClick={() => setSection(t.key)}
               >
-                Activity Log
-                <CountBadge count={(pending?.requests || 0) + (pending?.resets || 0)} label="pending" />
+                {t.label}
+                <CountBadge count={t.count} label="waiting" />
               </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={section === "users"}
-                className="folder-tab"
-                onClick={() => setSection("users")}
-              >
-                Manage users
-                <CountBadge count={waitingAccounts} label="new accounts and name changes waiting for approval" />
-              </button>
-            </div>
-          )}
+            ))}
+          </div>
 
-          <section
-            className={`panel userpanel-main ${isAdmin ? "folder-body" : ""}`}
-            aria-label={title}
-          >
+          <section className="panel userpanel-main folder-body" aria-label={title}>
             <h2 className="panel-title">{title}</h2>
-            {!isAdmin ? (
+            {section === "mine" ? (
+              <MyActivity api={api} version={version} />
+            ) : section === "requests" ? (
               <MyRequestsContent api={api} version={version} onSeen={onSeen} />
             ) : section === "users" ? (
               <>

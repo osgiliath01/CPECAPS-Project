@@ -394,6 +394,7 @@ export default function Dashboard({ api, user: sessionUser, onLogout }) {
             />
           ) : summary ? (
             <SummaryOfExpenses
+              api={api}
               key={summary.project_title}
               summary={summary}
               q={q}

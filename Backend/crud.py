@@ -103,16 +103,28 @@ def with_person_names(db: Session, items: list) -> list:
     screens. created_by / updated_by keep the stored value. One query for all the entries."""
     get = lambda item, f: item.get(f) if isinstance(item, dict) else getattr(item, f, None)
     usernames = {v for item in items for v in (get(item, "created_by"), get(item, "updated_by")) if v and " | " not in v}
-    names = dict(
-        db.query(models.User.username, models.User.name).filter(models.User.username.in_(usernames)).all()
-    ) if usernames else {}
+    people = (
+        db.query(models.User.username, models.User.name, models.User.id, models.UserAvatar.updated_at)
+        .outerjoin(models.UserAvatar, models.UserAvatar.user_id == models.User.id)
+        .filter(models.User.username.in_(usernames))
+        .all()
+    ) if usernames else []
+    names = {u: n for u, n, _, _ in people}
+    ids = {u: i for u, _, i, _ in people}
+    pictures = {u: p.isoformat() for u, _, _, p in people if p}
     for item in items:
-        created = display_person(get(item, "created_by"), names)
-        updated = display_person(get(item, "updated_by"), names)
-        if isinstance(item, dict):
-            item["created_by_name"], item["updated_by_name"] = created, updated
-        else:
-            item.created_by_name, item.updated_by_name = created, updated
+        creator = get(item, "created_by")
+        extra = {
+            "created_by_name": display_person(creator, names),
+            "updated_by_name": display_person(get(item, "updated_by"), names),
+            "created_by_user_id": ids.get(creator),          # for the creator's profile picture
+            "created_by_avatar": pictures.get(creator),
+        }
+        for key, value in extra.items():
+            if isinstance(item, dict):
+                item[key] = value
+            else:
+                setattr(item, key, value)
     return items
 
 

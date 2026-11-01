@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
+import Avatar from "./Avatar";
 import { cents, fmtDate, fmtStamp, money } from "../utils/format";
 import ConfirmDialog from "./ConfirmDialog";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "./Pagination";
 
-export default function SummaryOfExpenses({ summary, q, isAdmin, onBack, onNew, onEdit, onDelete, onRequestDelete }) {
+export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, onNew, onEdit, onDelete, onRequestDelete }) {
   const [sort, setSort] = useState({ key: "date", dir: "desc" });
   const [toDelete, setToDelete] = useState(null);
   const [reason, setReason] = useState("");
@@ -106,9 +107,14 @@ export default function SummaryOfExpenses({ summary, q, isAdmin, onBack, onNew, 
                 <td>{e.payee}</td>
                 <td className="amount">{money(e.amount)}</td>
                 <td className="small">
-                  {e.created_by_name || e.created_by.split(" | ").pop()}
-                  <br />
-                  {fmtStamp(e.created_at)}
+                  <div className="who">
+                    <Avatar api={api} userId={e.created_by_user_id} version={e.created_by_avatar} className="list-avatar sm" />
+                    <div>
+                      {e.created_by_name || e.created_by.split(" | ").pop()}
+                      <br />
+                      {fmtStamp(e.created_at)}
+                    </div>
+                  </div>
                 </td>
                 <td className="small">
                   {e.updated_by_name || e.updated_by}

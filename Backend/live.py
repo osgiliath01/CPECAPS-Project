@@ -96,11 +96,12 @@ def _drain(q: asyncio.Queue) -> None:
 hub = Hub()
 
 
-def _still_allowed(user_id: int) -> bool:
+def _still_allowed(user_id: int, token_version: int) -> bool:
     db = database.SessionLocal()
     try:
         u = db.get(models.User, user_id)
-        return bool(u and u.is_active and u.is_approved and not u.must_change_password)
+        return bool(u and u.is_active and u.is_approved and not u.must_change_password
+                    and (u.token_version or 0) == token_version)
     finally:
         db.close()
 
@@ -121,6 +122,7 @@ async def live_updates(
     open stream doesn't hold a database connection."""
     current_user = await run_in_threadpool(security.user_from_token, token)
     user_id, username, is_admin = current_user.id, current_user.username, current_user.is_superuser
+    token_version = current_user.token_version or 0
     queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
     hub.queues.add(queue)
 
@@ -148,7 +150,7 @@ async def live_updates(
                         yield _sse(event)
                 if time.monotonic() - last_account_check > ACCOUNT_CHECK_SECONDS:
                     last_account_check = time.monotonic()
-                    if not await run_in_threadpool(_still_allowed, user_id):
+                    if not await run_in_threadpool(_still_allowed, user_id, token_version):
                         yield _sse({}, "bye")
                         break
         finally:

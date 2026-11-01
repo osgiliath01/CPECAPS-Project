@@ -39,6 +39,7 @@ const ACTIONS = [
   ["name_request_cancelled", "Name request withdrawn"],
   ["name_change", "Changed name"],
   ["avatar_change", "Changed photo"],
+  ["signed_out_everywhere", "Signed out everywhere"],
   ["login", "Signed in"],
   ["login_failed", "Failed sign-in"],
   ["password_change", "Changed password"],
@@ -51,7 +52,7 @@ const ACTIONS = [
   ["chat", "Asked the assistant"],
   ["promote_admin", "Made admin"],
 ];
-const ACTION_LABEL = Object.fromEntries(ACTIONS);
+export const ACTION_LABEL = Object.fromEntries(ACTIONS);
 
 // Record types are logged separately, so each can be viewed on its own
 const RECORD_TYPES = [

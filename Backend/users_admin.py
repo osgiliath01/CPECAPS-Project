@@ -27,6 +27,7 @@ class ManagedUser(BaseModel):
     is_approved: bool
     created_at: datetime
     last_login: Optional[datetime]
+    avatar_version: Optional[str] = None
 
 
 class PendingAccount(BaseModel):
@@ -84,6 +85,7 @@ def list_users(
     )
     # Accounts waiting for approval first, then everyone by name
     users = db.query(models.User).order_by(models.User.is_approved, models.User.name).all()
+    pictures = {uid: changed.isoformat() for uid, changed in db.query(models.UserAvatar.user_id, models.UserAvatar.updated_at)}
     return [
         {
             "id": u.id,
@@ -93,6 +95,7 @@ def list_users(
             "is_superuser": u.is_superuser,
             "must_change_password": u.must_change_password,
             "is_approved": u.is_approved,
+            "avatar_version": pictures.get(u.id),
             "created_at": u.created_at,
             "last_login": last_logins.get(u.username),
         }

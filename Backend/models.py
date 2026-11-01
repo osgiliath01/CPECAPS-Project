@@ -84,6 +84,8 @@ class User(Base):
     # Accounts made through Create account start unapproved and can't sign in until an admin
     # approves them. Accounts made any other way (the first admin) are approved.
     is_approved = Column(Boolean, default=True, server_default=text("true"), nullable=False, index=True)
+    # Goes up by one on "Sign out on all devices": every token made before then stops working
+    token_version = Column(Integer, default=0, server_default=text("0"), nullable=False)
 
     # Audit fields
     created_at = Column(

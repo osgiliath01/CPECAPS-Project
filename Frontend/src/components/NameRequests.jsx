@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fmtStamp } from "../utils/format";
+import Avatar from "./Avatar";
 
 // Admins: staff asking to change their full name. Shown above the user list in Manage users.
 export default function NameRequests({ api, version, onChanged }) {
@@ -42,7 +43,12 @@ export default function NameRequests({ api, version, onChanged }) {
             {items?.map((r) => (
               <tr key={r.id}>
                 <td className="nowrap small">{fmtStamp(r.created_at)}</td>
-                <td>@{r.username}</td>
+                <td>
+                  <div className="who">
+                    <Avatar api={api} userId={r.user_id} version={r.avatar_version} className="list-avatar" />
+                    <span>@{r.username}</span>
+                  </div>
+                </td>
                 <td>
                   <span className="muted">{r.current_name}</span> → <strong>{r.new_name}</strong>
                 </td>

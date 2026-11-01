@@ -3,11 +3,12 @@
 - Anyone can upload or remove their own picture. Pictures are only served to signed-in users.
 - Staff ask for a name change and an admin approves or rejects it (with an optional note).
   Admins change their own name directly. Every change is written to the Activity Log."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 import activity
@@ -63,6 +64,7 @@ class PendingNameRequest(BaseModel):
     current_name: str
     new_name: str
     created_at: datetime
+    avatar_version: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -233,6 +235,109 @@ def cancel_my_name_request(
     return None
 
 
+# ---------- My activity and sign-in security ----------
+
+class ActivityItem(BaseModel):
+    id: int
+    created_at: datetime
+    actor: str
+    action: str
+    summary: str
+    by_me: bool
+
+
+class ActivityPage(BaseModel):
+    total: int
+    items: List[ActivityItem]
+
+
+@router.get("/me/activity", response_model=ActivityPage)
+def my_activity(
+    page: int = 1,
+    size: int = 20,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """What the signed-in user did, plus what admins did to their account (password reset,
+    name approved...), newest first. Questions to the assistant aren't included."""
+    size = max(1, min(size, 50))
+    page = max(1, page)
+    log = models.ActivityLog
+    q = db.query(log).filter(
+        or_(log.actor == current_user.username, and_(log.entity_type == "user", log.entity_id == current_user.id)),
+        log.action != "chat",
+    )
+    total = q.count()
+    rows = q.order_by(log.created_at.desc(), log.id.desc()).offset((page - 1) * size).limit(size).all()
+    return {
+        "total": total,
+        "items": [
+            {"id": r.id, "created_at": r.created_at, "actor": r.actor, "action": r.action,
+             "summary": r.summary, "by_me": r.actor == current_user.username}
+            for r in rows
+        ],
+    }
+
+
+class SecurityInfo(BaseModel):
+    previous_sign_in: Optional[datetime]   # the sign-in before this one
+    failed_since_previous: int             # wrong passwords for this username since then
+    failed_last_30_days: int
+    last_failed_at: Optional[datetime]
+    password_changed_at: Optional[datetime]
+    password_change_kind: Optional[str]    # password_change | reset_approved | admin_reset
+    locked_minutes: int                    # > 0 while sign-in is locked after wrong passwords
+
+
+@router.get("/me/security", response_model=SecurityInfo)
+def my_security(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Sign-in history for the signed-in user, from the Activity Log."""
+    log = models.ActivityLog
+    logins = (
+        db.query(log.created_at)
+        .filter(log.actor == current_user.username, log.action == "login")
+        .order_by(log.created_at.desc())
+        .limit(2)
+        .all()
+    )
+    previous = logins[1][0] if len(logins) > 1 else None
+    failed = db.query(log.created_at).filter(log.actor == current_user.username, log.action == "login_failed")
+    month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    password = (
+        db.query(log.created_at, log.action)
+        .filter(log.entity_type == "user", log.entity_id == current_user.id,
+                log.action.in_(("password_change", "reset_approved", "admin_reset")))
+        .order_by(log.created_at.desc())
+        .first()
+    )
+    return {
+        "previous_sign_in": previous,
+        "failed_since_previous": failed.filter(log.created_at > previous).count() if previous else 0,
+        "failed_last_30_days": failed.filter(log.created_at > month_ago).count(),
+        "last_failed_at": db.query(func.max(log.created_at))
+        .filter(log.actor == current_user.username, log.action == "login_failed").scalar(),
+        "password_changed_at": password[0] if password else None,
+        "password_change_kind": password[1] if password else None,
+        "locked_minutes": security.login_locked_minutes(db, current_user.username),
+    }
+
+
+@router.post("/me/sign-out-everywhere", status_code=status.HTTP_204_NO_CONTENT)
+def sign_out_everywhere(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Ends every session of this account, on every device (this one too)."""
+    current_user.token_version = (current_user.token_version or 0) + 1
+    activity.log(db, current_user.username, "signed_out_everywhere",
+                 f"'{current_user.username}' signed out on all devices", "user", current_user.id)
+    db.commit()
+    return None
+
+
 # ---------- Review (admins only) ----------
 
 @router.get("/name-requests", response_model=List[PendingNameRequest])
@@ -241,12 +346,18 @@ def list_name_requests(
     current_user: models.User = Depends(security.get_current_superuser),
 ):
     """Admins only: name changes waiting for approval, oldest first."""
-    return (
-        db.query(models.NameChangeRequest)
-        .filter_by(status="pending")
+    rows = (
+        db.query(models.NameChangeRequest, models.UserAvatar.updated_at)
+        .outerjoin(models.UserAvatar, models.UserAvatar.user_id == models.NameChangeRequest.user_id)
+        .filter(models.NameChangeRequest.status == "pending")
         .order_by(models.NameChangeRequest.created_at)
         .all()
     )
+    return [
+        {**{f: getattr(r, f) for f in ("id", "user_id", "username", "current_name", "new_name", "created_at")},
+         "avatar_version": pic.isoformat() if pic else None}
+        for r, pic in rows
+    ]
 
 
 def _get_pending(db: Session, request_id: int, admin: models.User) -> models.NameChangeRequest:

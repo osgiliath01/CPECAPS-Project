@@ -298,6 +298,19 @@ button { cursor: pointer; }
 .name-status.waiting { background: #fff0c2; }
 .name-status.rejected { background: #fdecea; }
 .name-requests { margin-bottom: 1.2rem; }
+/* small profile pictures next to names in lists */
+.who { display: flex; align-items: center; gap: 0.6rem; }
+.list-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.list-avatar.sm { width: 26px; height: 26px; }
+/* User Panel: sign-in security and My activity */
+.security { width: 100%; margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--line); text-align: left; }
+.security-title { margin: 0 0 0.3rem; font-size: 0.95rem; }
+.security .profile { margin-top: 0.4rem; }
+.security-warn dd { color: var(--danger); font-weight: 600; }
+.security-hint { margin: 0.4rem 0; padding: 0.4rem 0.6rem; border-radius: 0.6rem; background: #fdecea; }
+.security-confirm { margin-top: 0.4rem; }
+.my-activity-foot { margin-top: 0.6rem; }
+.log-badge.act-signed_out_everywhere { background: #fff0c2; }
 .log-badge.act-name_requested { background: #fff0c2; }
 .log-badge.act-name_approved { background: #d7efdc; }
 .log-badge.act-name_rejected { background: #f9d6d6; }

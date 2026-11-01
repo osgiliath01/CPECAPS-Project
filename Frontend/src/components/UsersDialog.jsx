@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { fmtStamp } from "../utils/format";
+import Avatar from "./Avatar";
 
 // Admin-only: every account, with controls for the selected one.
 // The content on its own, so it can sit inside a tab of the User Panel.
@@ -76,10 +77,15 @@ export function UsersContent({ api, user, version, onChanged }) {
                   <Fragment key={u.id}>
                     <tr key={u.id} className={u.id === selectedId ? "row-selected" : undefined}>
                       <td>
-                        <strong>{u.name}</strong>
-                        {u.id === user.id ? " (you)" : ""}
-                        <br />
-                        <span className="small muted">@{u.username}</span>
+                        <div className="who">
+                          <Avatar api={api} userId={u.id} version={u.avatar_version} className="list-avatar" />
+                          <div>
+                            <strong>{u.name}</strong>
+                            {u.id === user.id ? " (you)" : ""}
+                            <br />
+                            <span className="small muted">@{u.username}</span>
+                          </div>
+                        </div>
                       </td>
                       <td>
                         <span className={`log-badge ${u.is_superuser ? "st-pending" : ""}`}>{u.is_superuser ? "Admin" : "User"}</span>

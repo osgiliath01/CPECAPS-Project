@@ -62,6 +62,8 @@ class DisbursementItemResponse(BaseModel):
     # Full names for the screens (created_by / updated_by keep the stored username)
     created_by_name: Optional[str] = None
     updated_by_name: Optional[str] = None
+    created_by_user_id: Optional[int] = None   # with created_by_avatar: the creator's picture
+    created_by_avatar: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

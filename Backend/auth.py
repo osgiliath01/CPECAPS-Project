@@ -160,6 +160,7 @@ def login_for_access_token(
             "name": user.name,
             "is_superuser": user.is_superuser,
             "must_change_password": user.must_change_password,
+            "tv": user.token_version or 0,  # see "Sign out on all devices"
         },
         expires_delta=timedelta(minutes=30),
     )

@@ -499,6 +499,9 @@ Everyone's **User Panel** (menu at the top right) shows their profile card:
   - **Staff** send a request (**Request change**). The card shows *Waiting for approval: <new name>* with **Withdraw**; sending another request replaces the waiting one. If an admin rejects it, the card says so (with the admin's note) for 14 days.
   - **Admins** change their own name straight away (logged as *Changed name*).
 - **Admins review** name changes in **User Panel > Manage users**, above the user list, with an optional note. They're counted in the red badges (menu button, User Panel, Manage users tab). An admin can't review their own request.
+- **My activity** (a tab for everyone): what you did in the app, plus what admins did to your account (password reset, name approved…), newest first, 20 at a time with **Show more**. Questions to the assistant aren't included.
+- **Sign-in security** (on the profile card): your previous sign-in, wrong passwords for your username since then (highlighted in red, with a hint, if there were any), wrong passwords in the last 30 days, and when the password was last changed and by whom. **Sign out on all devices** ends every session of the account, this one included: each account has a `token_version` that's put in its sign-in tokens, and this raises it, so older tokens are refused (`401`) and open live connections close.
+- **Profile pictures in lists:** next to names in Manage users, in name-change requests, and next to *Created by* in Summary of Expenses.
 - When a name change is approved, the person's screens update live (their own account events are now sent to them, not only to admins). Entries show the new name through the full-name lookup (4.9 / *created by*).
 
 ## 5. Database changes

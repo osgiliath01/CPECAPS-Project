@@ -132,7 +132,18 @@ def get_current_user_allow_temporary(
             detail="This account has been deactivated.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    _check_token_version(payload, user)
     return user
+
+
+def _check_token_version(payload: dict, user: models.User) -> None:
+    """Refuses tokens made before the user chose "Sign out on all devices"."""
+    if int(payload.get("tv", 0) or 0) != (user.token_version or 0):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="You were signed out on all devices. Sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 def get_current_user(
     user: models.User = Depends(get_current_user_allow_temporary),
@@ -178,6 +189,7 @@ def user_from_token(token: str) -> models.User:
                 detail="This account has been deactivated.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        _check_token_version(payload, user)
         if user.must_change_password:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
