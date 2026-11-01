@@ -310,6 +310,13 @@ button { cursor: pointer; }
 .security-hint { margin: 0.4rem 0; padding: 0.4rem 0.6rem; border-radius: 0.6rem; background: #fdecea; }
 .security-confirm { margin-top: 0.4rem; }
 .my-activity-foot { margin-top: 0.6rem; }
+/* Activity lists: day headings and the sign-ins toggle */
+.review-table tr.feed-day td {
+  padding: 0.9rem 0.6rem 0.35rem; border-bottom: 1.5px solid var(--line);
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted);
+}
+.feed-toggle { display: inline-flex; align-items: center; gap: 0.45rem; margin-bottom: 0.6rem; font-size: 0.9rem; cursor: pointer; }
+.feed-toggle input { width: 1.05rem; height: 1.05rem; margin: 0; }
 /* User Panel: your numbers */
 .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.8rem; margin-bottom: 1.2rem; }
 .stat-card {
@@ -712,6 +719,30 @@ button { cursor: pointer; }
   /* Bigger touch targets */
   .pill.sm { padding: 0.55rem 1.1rem; }
   .link { padding: 0.2rem 0; }
+}
+
+/* Phones: activity lists read as a timeline, not label/value cards:
+   [badge]                 10:47 PM
+   Approved aaron01's request and archived CV# ...
+   by admin                                           */
+@media (max-width: 640px) {
+  .review-table.feed tbody tr:not(.feed-day) {
+    display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.35rem 0.75rem;
+    grid-template-areas: "action when" "details details" "user user";
+    padding: 0.8rem 0.2rem; border-bottom: 1px solid var(--line);
+  }
+  .review-table.feed tbody td { padding: 0; text-align: left; font-size: 0.92rem; }
+  .review-table.feed tbody td::before { content: none; }
+  .review-table.feed td.feed-action { grid-area: action; }
+  .review-table.feed td.feed-when { grid-area: when; text-align: right; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+  .review-table.feed td.feed-details { grid-area: details; line-height: 1.45; overflow-wrap: anywhere; }
+  .review-table.feed td.feed-user { grid-area: user; font-size: 0.8rem; color: var(--muted); }
+  .review-table.feed td.feed-user::before {
+    content: "by "; float: none; display: inline; margin: 0; padding: 0; max-width: none;
+    font-size: inherit; font-weight: 400; text-transform: none; color: inherit;
+  }
+  .review-table.feed tr.feed-day { display: block; }
+  .review-table.feed tr.feed-day td { display: block; padding: 1rem 0.2rem 0.3rem; font-size: 0.75rem; }
 }
 
 /* Very narrow phones (e.g. 360px Android) */

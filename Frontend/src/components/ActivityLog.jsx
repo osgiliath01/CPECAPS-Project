@@ -144,19 +144,19 @@ function ActivityTab({ api, version }) {
         <p className="muted">No activity found.</p>
       ) : (
         <div className="review-scroll">
-          <table className="review-table">
+          <table className="review-table feed">
             <thead>
               <tr><th>When</th><th>User</th><th>Action</th><th>Details</th></tr>
             </thead>
             <tbody>
               {data.items.map((a) => (
                 <tr key={a.id}>
-                  <td className="nowrap small">{fmtStamp(a.created_at)}</td>
-                  <td>{a.actor}</td>
-                  <td>
+                  <td className="nowrap small feed-when">{fmtStamp(a.created_at)}</td>
+                  <td className="feed-user">{a.actor}</td>
+                  <td className="feed-action">
                     <span className={`log-badge act-${a.action}`}>{ACTION_LABEL[a.action] || a.action}</span>
                   </td>
-                  <td className="reason">
+                  <td className="reason feed-details">
                     {a.summary}
                     <Changes details={a.details} />
                   </td>

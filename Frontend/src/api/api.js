@@ -199,7 +199,8 @@ export function createApi(token, onUnauthorized) {
       return res.ok ? res.blob() : null;
     },
     changeName: (newName) => call("/me/name", { method: "POST", body: { new_name: newName } }),
-    myActivity: (page = 1, size = 20) => call(`/me/activity?page=${page}&size=${size}`),
+    myActivity: (page = 1, size = 20, signins = true) =>
+      call(`/me/activity?page=${page}&size=${size}&signins=${signins}`),
     mySecurity: () => call("/me/security"),
     myStats: () => call("/me/stats"),
     signOutEverywhere: () => call("/me/sign-out-everywhere", { method: "POST" }),

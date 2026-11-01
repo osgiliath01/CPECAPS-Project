@@ -256,6 +256,7 @@ class ActivityPage(BaseModel):
 def my_activity(
     page: int = 1,
     size: int = 20,
+    signins: bool = True,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(security.get_current_user),
 ):
@@ -268,6 +269,8 @@ def my_activity(
         or_(log.actor == current_user.username, and_(log.entity_type == "user", log.entity_id == current_user.id)),
         log.action != "chat",
     )
+    if not signins:  # routine sign-ins and sign-outs hidden (wrong passwords still show)
+        q = q.filter(log.action.notin_(("login", "logout")))
     total = q.count()
     rows = q.order_by(log.created_at.desc(), log.id.desc()).offset((page - 1) * size).limit(size).all()
     return {
