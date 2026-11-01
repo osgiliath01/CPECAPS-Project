@@ -102,6 +102,8 @@ def ensure_schema():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT TRUE",
         "CREATE INDEX IF NOT EXISTS ix_users_is_approved ON users (is_approved)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_seen_at TIMESTAMP WITH TIME ZONE",
         "ALTER TABLE deletion_requests ALTER COLUMN requester_seen SET DEFAULT FALSE",
     ]
     with engine.begin() as conn:

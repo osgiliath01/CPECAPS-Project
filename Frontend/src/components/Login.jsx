@@ -1,15 +1,20 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createApi } from "../api/api";
 import logo from "../assets/logo.webp";
 import LoginSlideshow from "./LoginSlideshow";
 import { versionLabel } from "../version";
 
 const EMPTY = { name: "", username: "", password: "", confirm: "", message: "" };
 
-export default function Login({ onLogin, onRegister, onResetRequest }) {
+export default function Login({ onLogin, onToken, signedOutReason, onRegister, onResetRequest }) {
   const [mode, setMode] = useState("login"); // "login" | "register" | "reset"
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState(""); // e.g. "account created, waiting for approval"
+  const [notice, setNotice] = useState(signedOutReason || ""); // e.g. "account created, waiting for approval"
+  // Signing in while the account is open on another device: { challenge_id, secret, expires_in }
+  const [waiting, setWaiting] = useState(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const loginApi = useRef(null);
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState("");
   const isRegister = mode === "register";
@@ -50,11 +55,60 @@ export default function Login({ onLogin, onRegister, onResetRequest }) {
         goTo("login"); // keeps the username filled in
         setNotice("Account created. An admin has to approve it before you can sign in.");
         setBusy(false);
-      } else await onLogin(username, form.password);
+      } else {
+        const res = await onLogin(username, form.password);
+        if (res?.status === "waiting") {
+          setWaiting(res);
+          setSecondsLeft(res.expires_in || 180);
+          setBusy(false);
+        }
+      }
     } catch (err) {
       setError(err.message);
       setBusy(false);
     }
+  }
+
+  // While waiting: ask the server every 2 seconds whether the other device answered
+  useEffect(() => {
+    if (!waiting) return;
+    let stopped = false;
+    const check = async () => {
+      try {
+        loginApi.current = loginApi.current || createApi(null, null);
+        const res = await loginApi.current.loginChallengeStatus(waiting.challenge_id, waiting.secret);
+        if (stopped) return;
+        if (res.status === "approved") {
+          setWaiting(null);
+          onToken(res.access_token);
+        } else if (res.status === "denied") {
+          setWaiting(null);
+          setError("The device that's signed in to this account blocked this sign-in.");
+        } else if (res.status === "expired") {
+          setWaiting(null);
+          setError("No answer from the other device. Try again, or sign out there first.");
+        } else if (typeof res.expires_in === "number") {
+          setSecondsLeft(res.expires_in);
+        }
+      } catch (err) {
+        if (!stopped) {
+          setWaiting(null);
+          setError(err.message);
+        }
+      }
+    };
+    const timer = setInterval(check, 2000);
+    check();
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [waiting, onToken]);
+
+  async function cancelWaiting() {
+    const w = waiting;
+    setWaiting(null);
+    if (w && loginApi.current) await loginApi.current.cancelLoginChallenge(w.challenge_id, w.secret);
   }
 
   const title = isReset ? "Reset password" : isRegister ? "Create account" : "Sign in";
@@ -72,7 +126,24 @@ export default function Login({ onLogin, onRegister, onResetRequest }) {
         <div key={mode} className="login-fields">
           <h1>{title}</h1>
 
-          {isReset && resetSent ? (
+          {waiting ? (
+            <div className="login-waiting" role="status">
+              <p>
+                <strong>This account is signed in on another device.</strong>
+              </p>
+              <p className="muted small">
+                We've asked that device to let you in. Ask whoever is using it to click <strong>Allow</strong>, or
+                sign out there. If it's closed or offline, you'll get in within about a minute.
+              </p>
+              <p className="login-waiting-timer">
+                <span className="spinner" aria-hidden="true" /> Waiting… {Math.floor(secondsLeft / 60)}:
+                {String(secondsLeft % 60).padStart(2, "0")}
+              </p>
+              <button type="button" className="pill" onClick={cancelWaiting}>
+                Cancel
+              </button>
+            </div>
+          ) : isReset && resetSent ? (
             <>
               <p role="status" className="reset-sent">{resetSent}</p>
               <p className="muted small">

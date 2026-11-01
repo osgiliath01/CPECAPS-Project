@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Annotated, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -22,6 +23,7 @@ import imports
 import live
 import chatbot
 import profiles
+import sessions
 
 # Create database tables automatically, then add any new columns to existing tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -69,6 +71,7 @@ app.include_router(imports.router)
 app.include_router(live.router)
 app.include_router(chatbot.router)
 app.include_router(profiles.router)
+app.include_router(sessions.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins during development
@@ -111,10 +114,14 @@ def register_user(
     tags=["Authentication"],
 )
 def login_for_access_token(
+    request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(database.get_db),
 ):
-    """OAuth2 compatible token login, returns a JWT access token for Swagger UI and clients."""
+    """OAuth2 compatible token login, returns a JWT access token for Swagger UI and clients.
+
+    If the account is open on another device, answers 202 {"status": "waiting", ...} instead:
+    that device is asked to allow the sign-in (see sessions.py)."""
     # Too many wrong passwords lately: refuse before even checking this one. Not logged, so
     # someone hammering the sign-in page can't flood the Activity Log.
     locked = security.login_locked_minutes(db, form_data.username[:255])
@@ -154,16 +161,19 @@ def login_for_access_token(
             detail="Your account is waiting for an admin's approval. Try again once it's approved.",
         )
 
-    access_token = security.create_access_token(
-        data={
-            "sub": user.username,
-            "name": user.name,
-            "is_superuser": user.is_superuser,
-            "must_change_password": user.must_change_password,
-            "tv": user.token_version or 0,  # see "Sign out on all devices"
-        },
-        expires_delta=timedelta(minutes=30),
-    )
+    # Signed in on another device that's still there: ask that device first
+    if security.single_session_applies(user) and sessions.session_is_live(user):
+        challenge = sessions.create_challenge(db, user, request.headers.get("user-agent", ""))
+        db.commit()
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={
+            "status": "waiting",
+            "challenge_id": challenge.id,
+            "secret": challenge.secret,
+            "expires_in": sessions.CHALLENGE_SECONDS,
+            "detail": "This account is signed in on another device. That device has been asked to let you in.",
+        })
+
+    access_token = sessions.issue_token(user, sessions.start_session(user))
     activity.log(db, user.username, "login", f"'{user.username}' signed in", "user", user.id)
     db.commit()
     return {"access_token": access_token, "token_type": "bearer"}

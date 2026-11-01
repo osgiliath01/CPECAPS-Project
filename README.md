@@ -504,6 +504,20 @@ Everyone's **User Panel** (menu at the top right) shows their profile card:
 - **Profile pictures in lists:** next to names in Manage users, in name-change requests, and next to *Created by* in Summary of Expenses.
 - When a name change is approved, the person's screens update live (their own account events are now sent to them, not only to admins). Entries show the new name through the full-name lookup (4.9 / *created by*).
 
+### 4.17 One device at a time
+
+Each account can be signed in on **one device (browser tab) at a time** (`sessions.py`).
+
+- **Signing in while the account is open elsewhere:** the new device shows *"This account is signed in on another device…"* with a countdown and **Cancel**. The signed-in device gets a pop-up, *Sign-in from another device* (e.g. "Chrome on Android"), with **Allow and sign me out** or **Block**.
+  - **Allow:** the new device gets in, and the first one is signed out with a message saying why.
+  - **Block:** the new device is told it was blocked; the first stays signed in.
+  - **No answer:** the new device keeps waiting (up to 3 minutes per try). It's never let in automatically while the first device is there.
+- **If the first device is gone** (tab closed, computer asleep, offline: no sign of life from its live connection for about 75 seconds), the new device gets in straight away without asking.
+- **Signing out** ends the session, so signing in elsewhere afterwards doesn't ask. Closing the tab without signing out means waiting about a minute before another device can sign in without approval.
+- **How it works:** each sign-in gets a session id that's put in its token. Signing in on another device replaces it, so the old token is refused (`401`) and its live connection closes. The open live connection reports every 30 seconds that the device is still there (`users.session_seen_at`). Waiting sign-ins are kept in `login_challenges`, and the new device checks back every 2 seconds with a one-time secret, so the password is never re-sent.
+- **Logged** in the Activity Log: *Sign-in from another device*, *Other device allowed / blocked*, *Signed out*.
+- **Settings** (`Backend\.env`): `SINGLE_SESSION=false` turns the rule off. `SINGLE_SESSION_EXEMPT=loadtest,loadtestadmin` lists accounts it doesn't apply to: **the load test needs this**, since its simulated users share accounts.
+
 ## 5. Database changes
 
 All changes are applied automatically when the backend starts:

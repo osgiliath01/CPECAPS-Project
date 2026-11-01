@@ -86,6 +86,10 @@ class User(Base):
     is_approved = Column(Boolean, default=True, server_default=text("true"), nullable=False, index=True)
     # Goes up by one on "Sign out on all devices": every token made before then stops working
     token_version = Column(Integer, default=0, server_default=text("0"), nullable=False)
+    # One signed-in device at a time (sessions.py): the current session's id, and when that
+    # device was last seen through its live connection
+    session_id = Column(String(64), nullable=True)
+    session_seen_at = Column(DateTime(timezone=True), nullable=True)
 
     # Audit fields
     created_at = Column(
@@ -157,6 +161,22 @@ class ActivityLog(Base):
     entity_id = Column(Integer, nullable=True)
     summary = Column(String(500), nullable=False)
     details = Column(JSON, nullable=True)                         # before/after values, reasons, etc.
+
+
+class LoginChallenge(Base):
+    """A sign-in from a new device while the account is open on another one. The other
+    device is asked to allow or block it; the new device waits with `secret` to collect
+    its token."""
+    __tablename__ = "login_challenges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    secret = Column(String(64), nullable=False)
+    device = Column(String(120), nullable=True)   # e.g. "Chrome on Android"
+    status = Column(String(20), default="pending", nullable=False, index=True)
+    # pending | allowed | denied | expired | cancelled | used
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    decided_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class UserAvatar(Base):

@@ -332,6 +332,7 @@ def sign_out_everywhere(
 ):
     """Ends every session of this account, on every device (this one too)."""
     current_user.token_version = (current_user.token_version or 0) + 1
+    current_user.session_id = None  # so signing in again doesn't wait for an answer
     activity.log(db, current_user.username, "signed_out_everywhere",
                  f"'{current_user.username}' signed out on all devices", "user", current_user.id)
     db.commit()

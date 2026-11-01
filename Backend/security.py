@@ -29,6 +29,16 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # sign in for LOGIN_LOCK_MINUTES (counted from the oldest of those wrong tries). A successful
 # sign-in starts the count again. Uses the login_failed rows already in the Activity Log, so it
 # works the same across all backend processes.
+# One signed-in device per account (see sessions.py). SINGLE_SESSION=false turns it off;
+# SINGLE_SESSION_EXEMPT lists usernames it doesn't apply to (e.g. load-test accounts).
+SINGLE_SESSION = os.getenv("SINGLE_SESSION", "true").strip().lower() not in ("0", "false", "no", "off")
+SINGLE_SESSION_EXEMPT = {u.strip() for u in os.getenv("SINGLE_SESSION_EXEMPT", "").split(",") if u.strip()}
+
+
+def single_session_applies(user: models.User) -> bool:
+    return SINGLE_SESSION and user.username not in SINGLE_SESSION_EXEMPT
+
+
 LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
 LOGIN_LOCK_MINUTES = int(os.getenv("LOGIN_LOCK_MINUTES", "15"))
 
@@ -137,13 +147,28 @@ def get_current_user_allow_temporary(
 
 
 def _check_token_version(payload: dict, user: models.User) -> None:
-    """Refuses tokens made before the user chose "Sign out on all devices"."""
+    """Refuses tokens made before the user chose "Sign out on all devices", and tokens of a
+    session that has ended (signed out, or the account was signed in on another device)."""
     if int(payload.get("tv", 0) or 0) != (user.token_version or 0):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="You were signed out on all devices. Sign in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if single_session_applies(user) and payload.get("sid") != user.session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="You were signed out because your account is now signed in on another device.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def token_claims(token: str) -> dict:
+    """The token's contents, without checking the account (callers check that separately)."""
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.PyJWTError:
+        return {}
 
 def get_current_user(
     user: models.User = Depends(get_current_user_allow_temporary),

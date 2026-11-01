@@ -10,13 +10,27 @@ import UsersDialog from "./UsersDialog";
 import ImportDialog from "./ImportDialog";
 import logo from "../assets/logo.webp";
 import UserPanel from "./UserPanel";
+import LoginRequestDialog from "./LoginRequestDialog";
 
 const FILTERS = [
   { key: "project_title", label: "Project Title" },
   { key: "payee", label: "Payee / Particulars" },
 ];
 
-export default function Dashboard({ api, user: sessionUser, onLogout }) {
+const SIGNED_OUT_ELSEWHERE =
+  "You were signed out. Your account may now be signed in on another device, or an admin changed it.";
+
+export default function Dashboard({ api, user: sessionUser, onLogout, onSessionEnded = onLogout }) {
+  // Sign-ins from other devices waiting for this device to allow or block them
+  const [loginRequests, setLoginRequests] = useState([]);
+  const loadLoginRequests = useCallback(
+    () => (api.myLoginChallenges ? api.myLoginChallenges().then(setLoginRequests, () => {}) : Promise.resolve()),
+    [api]
+  );
+  useEffect(() => {
+    loadLoginRequests();
+  }, [loadLoginRequests]);
+  const dropLoginRequest = useCallback((id) => setLoginRequests((list) => list.filter((r) => r.id !== id)), []);
   // Own profile (picture, current name, name-change request). The name in the sign-in token
   // can be out of date after an approved change, so the profile's name is used everywhere.
   const [profile, setProfile] = useState(null);
@@ -52,6 +66,8 @@ export default function Dashboard({ api, user: sessionUser, onLogout }) {
   const [liveVersion, setLiveVersion] = useState(0); // bumps on every change, so open windows reload
   const profileIdRef = useRef(null);
   profileIdRef.current = profile?.id ?? null;
+  const loadLoginRequestsRef = useRef(loadLoginRequests);
+  loadLoginRequestsRef.current = loadLoginRequests;
   // Badge counts. Admins: requests and password resets waiting. Staff: answers not yet seen.
   const [pending, setPending] = useState({ requests: 0, resets: 0, accounts: 0, names: 0, responses: 0 });
   const reqId = useRef(0);
@@ -174,6 +190,8 @@ export default function Dashboard({ api, user: sessionUser, onLogout }) {
       setLiveVersion((v) => v + 1);
       if (resync || events.some((e) => e.entity_type === "user" && e.entity_id === profileIdRef.current))
         setProfileVersion((v) => v + 1); // e.g. an admin approved this user's name change
+      if (resync || events.some((e) => e.action === "login_challenge" && e.entity_id === profileIdRef.current))
+        loadLoginRequestsRef.current(); // someone is signing in to this account elsewhere
       const others = [
         ...new Set(
           events
@@ -189,7 +207,7 @@ export default function Dashboard({ api, user: sessionUser, onLogout }) {
 
     const stop = api.connectLive({
       onStatus: setLiveStatus,
-      onUnauthorized: onLogout,
+      onUnauthorized: () => onSessionEnded(SIGNED_OUT_ELSEWHERE),
       onEvent: (type, data) => {
         if (type === "hello") {
           if (connectedBefore) {
@@ -201,7 +219,7 @@ export default function Dashboard({ api, user: sessionUser, onLogout }) {
           resync = true;
           schedule();
         } else if (type === "bye") {
-          onLogout();
+          onSessionEnded(SIGNED_OUT_ELSEWHERE);
         } else {
           batch.push(data);
           schedule();
@@ -212,7 +230,7 @@ export default function Dashboard({ api, user: sessionUser, onLogout }) {
       stop();
       if (timer) clearTimeout(timer);
     };
-  }, [api, user.username, onLogout]);
+  }, [api, user.username, onSessionEnded]);
 
 
   const toggleField = (key) =>
@@ -436,6 +454,19 @@ export default function Dashboard({ api, user: sessionUser, onLogout }) {
         <CreateProjectDialog
           onSave={handleCreateProject}
           onClose={() => setCreatingProject(false)}
+        />
+      )}
+      {loginRequests[0] && (
+        <LoginRequestDialog
+          key={loginRequests[0].id}
+          api={api}
+          request={loginRequests[0]}
+          onAllowed={() => onSessionEnded("You let another device sign in, so you were signed out here.")}
+          onBlocked={(id) => {
+            dropLoginRequest(id);
+            setToast("Sign-in blocked. If it wasn't you, change your password.");
+          }}
+          onGone={dropLoginRequest}
         />
       )}
       {pwOpen && (

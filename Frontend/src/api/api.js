@@ -74,13 +74,25 @@ export function createApi(token, onUnauthorized) {
     try {
       return await http(path, { ...opts, token });
     } catch (e) {
-      if (e.status === 401 && token && onUnauthorized) onUnauthorized();
+      if (e.status === 401 && token && onUnauthorized) onUnauthorized(e.message);
       throw e;
     }
   };
   return {
+    // Returns { access_token } or, if the account is open on another device,
+    // { status: "waiting", challenge_id, secret } (see the two calls below)
     login: (username, password) =>
       http(ROUTES.login, { method: "POST", form: { username, password } }),
+    loginChallengeStatus: (id, secret) =>
+      http(`/auth/login-challenges/${id}/status`, { method: "POST", body: { secret } }),
+    cancelLoginChallenge: (id, secret) =>
+      http(`/auth/login-challenges/${id}/cancel`, { method: "POST", body: { secret } }).catch(() => {}),
+    // Ends this device's session (best effort; never signs out because of an error)
+    endSession: () => (token ? http("/auth/logout", { method: "POST", token }).catch(() => {}) : Promise.resolve()),
+    // The signed-in device: sign-ins from other devices waiting for an answer
+    myLoginChallenges: () => call("/me/login-challenges"),
+    allowLogin: (id) => call(`/me/login-challenges/${id}/allow`, { method: "POST" }),
+    denyLogin: (id) => call(`/me/login-challenges/${id}/deny`, { method: "POST" }),
     register: (body) => http(ROUTES.register, { method: "POST", body }),
     // Forgot password (no sign-in needed); an admin approves it
     requestPasswordReset: (username, message) =>

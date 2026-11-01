@@ -311,6 +311,19 @@ button { cursor: pointer; }
 .security-confirm { margin-top: 0.4rem; }
 .my-activity-foot { margin-top: 0.6rem; }
 .log-badge.act-signed_out_everywhere { background: #fff0c2; }
+/* One device at a time: the waiting sign-in, and the prompt on the signed-in device */
+.login-waiting { display: flex; flex-direction: column; gap: 0.6rem; }
+.login-waiting p { margin: 0; }
+.login-waiting-timer { display: flex; align-items: center; gap: 0.5rem; font-variant-numeric: tabular-nums; }
+.spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: #ffbc13; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.login-request { max-width: 30rem; }
+.login-request ul { padding-left: 1.1rem; }
+.log-badge.act-login_challenge, .log-badge.act-login_challenge_denied { background: #fff0c2; }
+.log-badge.act-login_challenge_allowed { background: #d7efdc; }
 .log-badge.act-name_requested { background: #fff0c2; }
 .log-badge.act-name_approved { background: #d7efdc; }
 .log-badge.act-name_rejected { background: #f9d6d6; }

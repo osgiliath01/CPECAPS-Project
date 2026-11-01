@@ -9,11 +9,15 @@ import UpdateBanner from "./components/UpdateBanner";
 export default function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem("token") || (DEMO ? "demo" : null));
   const [user, setUser] = useState(null);
+  const [signedOutReason, setSignedOutReason] = useState(""); // shown on the sign-in page
 
-  const logout = useCallback(() => {
+  // The session ended (expired, signed in elsewhere, deactivated...). Shows why, if known.
+  const logout = useCallback((reason) => {
     sessionStorage.removeItem("token");
     setToken(null);
     setUser(null);
+    const text = typeof reason === "string" ? reason : "";
+    setSignedOutReason(text && !/could not validate/i.test(text) ? text : "");
   }, []);
 
   const api = useMemo(() => createApi(token, logout), [token, logout]);
@@ -30,10 +34,24 @@ export default function App() {
     };
   }, [token, api, logout]);
 
+  // Signing out on purpose: end the session on the server too, so this account can be
+  // signed in elsewhere straight away
+  const signOut = useCallback(async () => {
+    await api.endSession?.();
+    logout();
+  }, [api, logout]);
+
+  function acceptToken(accessToken) {
+    sessionStorage.setItem("token", accessToken);
+    setSignedOutReason("");
+    setToken(accessToken);
+  }
+
+  // Returns the waiting info if the account is open on another device (Login handles it)
   async function handleLogin(username, password) {
     const res = await createApi(null, null).login(username, password);
-    sessionStorage.setItem("token", res.access_token);
-    setToken(res.access_token);
+    if (res?.access_token) acceptToken(res.access_token);
+    else return res;
   }
 
   // New accounts wait for an admin's approval, so there's no automatic sign-in
@@ -46,6 +64,8 @@ export default function App() {
     screen = (
       <Login
         onLogin={handleLogin}
+        onToken={acceptToken}
+        signedOutReason={signedOutReason}
         onRegister={handleRegister}
         onResetRequest={(username, message) => createApi(null, null).requestPasswordReset(username, message)}
       />
@@ -56,11 +76,14 @@ export default function App() {
       <ForcePasswordChange
         api={api}
         user={user}
-        onDone={(newPassword) => handleLogin(user.username, newPassword)}
-        onLogout={logout}
+        onDone={async (newPassword) => {
+          await api.endSession?.(); // this device's own session, so signing in again doesn't ask
+          return handleLogin(user.username, newPassword);
+        }}
+        onLogout={signOut}
       />
     );
-  else screen = <Dashboard api={api} user={user} onLogout={logout} />;
+  else screen = <Dashboard api={api} user={user} onLogout={signOut} onSessionEnded={logout} />;
 
   return (
     <>

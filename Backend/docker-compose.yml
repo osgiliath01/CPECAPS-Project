@@ -5,6 +5,9 @@ x-backend-env: &backend-env
   # "db" is the database container below; the backend reaches it inside Docker
   DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Backend/.env}@db:5432/caic_db
   ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+  # One signed-in device per account (sessions.py). Exempt usernames may sign in many times
+  SINGLE_SESSION: ${SINGLE_SESSION:-true}
+  SINGLE_SESSION_EXEMPT: ${SINGLE_SESSION_EXEMPT:-}
   # The assistant's model server and model (see the ollama service below and chatbot.py)
   OLLAMA_HOST: http://ollama:11434
   OLLAMA_MODEL: qwen3:4b-instruct-2507-q4_K_M
