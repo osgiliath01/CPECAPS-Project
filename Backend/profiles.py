@@ -270,7 +270,7 @@ def my_activity(
         log.action != "chat",
     )
     if not signins:  # routine sign-ins and sign-outs hidden (wrong passwords still show)
-        q = q.filter(log.action.notin_(("login", "logout")))
+        q = q.filter(log.action.notin_(("login", "logout", "login_challenge", "login_challenge_cancelled")))
     total = q.count()
     rows = q.order_by(log.created_at.desc(), log.id.desc()).offset((page - 1) * size).limit(size).all()
     return {

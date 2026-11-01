@@ -323,6 +323,9 @@ def backup_status(
     }
 
 
+HIDDEN_BY_DEFAULT = ("chat", "login_challenge", "login_challenge_cancelled")
+
+
 @router.get("/activity-logs", response_model=ActivityLogPage)
 def list_activity(
     action: Optional[str] = None,
@@ -339,8 +342,10 @@ def list_activity(
     if action:
         query = query.filter(models.ActivityLog.action == action)
     else:
-        # Older "Asked the assistant" rows are only shown when that action is picked in the filter
-        query = query.filter(models.ActivityLog.action != "chat")
+        # Routine noise is only shown when that action is picked in the filter: older "Asked the
+        # assistant" rows, and sign-in attempts while the account was open elsewhere (the
+        # decisions, allowed/blocked, are still shown)
+        query = query.filter(models.ActivityLog.action.notin_(HIDDEN_BY_DEFAULT))
     if actor:
         query = query.filter(models.ActivityLog.actor.ilike(f"%{actor}%"))
     if entity_type:

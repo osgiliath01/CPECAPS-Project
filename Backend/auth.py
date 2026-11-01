@@ -210,6 +210,12 @@ def login_for_access_token(
 
     # Signed in on another device that's still there: ask that device first
     if security.single_session_applies(user) and sessions.session_is_live(user):
+        if sessions.too_many_challenges(db, user):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many sign-in attempts while this account is open on another device. "
+                       "Wait a few minutes, or sign out on the other device first.",
+            )
         challenge = sessions.create_challenge(db, user, request.headers.get("user-agent", ""))
         db.commit()
         return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={

@@ -538,7 +538,8 @@ Each account can be signed in on **one device (browser tab) at a time** (`sessio
 - **If the first device is gone** (tab closed, computer asleep, offline: no sign of life from its live connection for about 75 seconds), the new device gets in straight away without asking.
 - **Signing out** ends the session, so signing in elsewhere afterwards doesn't ask. Closing the tab without signing out means waiting about a minute before another device can sign in without approval.
 - **How it works:** each sign-in gets a session id that's put in its token. Signing in on another device replaces it, so the old token is refused (`401`) and its live connection closes. The open live connection reports every 30 seconds that the device is still there (`users.session_seen_at`). Waiting sign-ins are kept in `login_challenges`, and the new device checks back every 2 seconds with a one-time secret, so the password is never re-sent.
-- **Logged** in the Activity Log: *Sign-in from another device*, *Other device allowed / blocked*, *Signed out*.
+- **Logged** in the Activity Log: *Sign-in from another device*, *Other device allowed / blocked*, *Signed out*. Attempts (*Sign-in from another device*) are hidden from the default view, like assistant questions; pick the action in the filter to see them. Cancelling on the new device isn't logged at all.
+- **Limit:** at most 3 sign-in attempts from other devices per account in 5 minutes. After that the new device is told to wait or sign out on the other device, so nobody can flood the signed-in person with prompts.
 - **Settings** (`Backend\.env`): `SINGLE_SESSION=false` turns the rule off. `SINGLE_SESSION_EXEMPT=loadtest,loadtestadmin` lists accounts it doesn't apply to: **the load test needs this**, since its simulated users share accounts.
 
 ### 4.17a Signing out after inactivity

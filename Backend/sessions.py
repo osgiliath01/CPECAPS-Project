@@ -35,6 +35,8 @@ router = APIRouter(tags=["Authentication"])
 SESSION_STALE_SECONDS = 75   # no sign of life for this long: the device counts as gone
 TOUCH_SECONDS = 30           # how often an open live connection reports that the device is there
 CHALLENGE_SECONDS = 180      # how long a new device waits for an answer
+CHALLENGE_LIMIT = 3         # at most this many sign-in attempts from other devices...
+CHALLENGE_LIMIT_MINUTES = 5  # ...per account in this many minutes
 ABANDONED_SECONDS = 12       # the new device checks every 2 s; silent this long = it gave up (tab closed)
 # A sign-in lasts this long without activity. While the person is using the app, the app
 # renews it in the background (POST /auth/refresh), so only idle sessions expire.
@@ -101,6 +103,18 @@ def describe_device(user_agent: str) -> str:
         (r"Mac OS X|Macintosh", "Mac"), (r"CrOS", "Chromebook"), (r"Linux", "Linux"),
     ] if re.search(pattern, ua)), "an unknown device")
     return f"{browser} on {system}"
+
+
+def too_many_challenges(db: Session, user: models.User) -> bool:
+    """True if this account had CHALLENGE_LIMIT sign-in attempts from other devices lately, so
+    nobody can flood the signed-in person with prompts (or the Activity Log with entries)."""
+    since = _now() - timedelta(minutes=CHALLENGE_LIMIT_MINUTES)
+    recent = (
+        db.query(models.LoginChallenge.id)
+        .filter(models.LoginChallenge.user_id == user.id, models.LoginChallenge.created_at > since)
+        .count()
+    )
+    return recent >= CHALLENGE_LIMIT
 
 
 def create_challenge(db: Session, user: models.User, user_agent: str) -> models.LoginChallenge:
@@ -177,12 +191,8 @@ def cancel_challenge(challenge_id: int, payload: ChallengeSecret, db: Session = 
     if challenge.status == "pending":
         challenge.status = "cancelled"
         challenge.decided_at = _now()
-        user = db.get(models.User, challenge.user_id)
-        if user:
-            # Also tells the signed-in device (through its live connection) to close its prompt
-            activity.log(db, user.username, "login_challenge_cancelled",
-                         f"Sign-in to '{user.username}' from {challenge.device} was cancelled on that device",
-                         "user", user.id, {"challenge_id": challenge.id})
+        # Not written to the Activity Log (repeated tries would flood it); the signed-in
+        # device's prompt rechecks every few seconds and closes by itself
         db.commit()
     return None
 
