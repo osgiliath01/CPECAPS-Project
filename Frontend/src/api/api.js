@@ -118,7 +118,7 @@ export function createApi(token, onUnauthorized) {
     listDisbursements: () => call(ROUTES.disbursements),
 
     getSummary: (title) => call(ROUTES.summary(title)),
-    // A project's entries as a CSV file: { blob, filename }
+    // A project's entries as an Excel file: { blob, filename }
     exportProject: async (title) => {
       let res;
       try {
@@ -139,7 +139,7 @@ export function createApi(token, onUnauthorized) {
         throw new ApiError(detail || `Export failed (${res.status}).`, res.status);
       }
       const match = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "");
-      return { blob: await res.blob(), filename: match ? match[1] : `${title}.csv` };
+      return { blob: await res.blob(), filename: match ? match[1] : `${title}.xlsx` };
     },
 
     createDisbursement: (body) =>

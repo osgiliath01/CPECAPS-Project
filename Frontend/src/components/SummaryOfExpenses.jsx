@@ -12,7 +12,7 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
 
-  // Downloads every entry of this project (not just what the search shows) as a CSV file
+  // Downloads every entry of this project (not just what the search shows) as an Excel file
   async function exportCsv() {
     setExporting(true);
     setExportError("");
@@ -75,7 +75,7 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
             title={
               summary.entries.length === 0
                 ? "This project has no entries to export"
-                : "Download all of this project's entries as a CSV file (opens in Excel)"
+                : "Download all of this project's entries as an Excel file"
             }
           >
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -88,7 +88,7 @@ export default function SummaryOfExpenses({ api, summary, q, isAdmin, onBack, on
               strokeLinejoin="round"
             />
           </svg>
-            {exporting ? "Exporting…" : "Export CSV"}
+            {exporting ? "Exporting…" : "Export Excel"}
           </button>
           <button className="pill create" onClick={onNew}>
             <span className="plus" aria-hidden="true">

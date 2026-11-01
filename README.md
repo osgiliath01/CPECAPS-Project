@@ -490,14 +490,15 @@ The script works in `.deploy\live` and `.deploy\preview` (git worktrees, ignored
 
 ---
 
-### 4.11a CSV export (per project)
+### 4.11a Excel export (per project)
 
-**Export CSV** in a project's *Summary of Expenses* downloads all of that project's active entries (not only what the search shows), oldest first, as `<Project-Name>_<date>.csv` (`GET /projects/{title}/export`).
+**Export Excel** in a project's *Summary of Expenses* downloads all of that project's active entries (not only what the search shows), oldest first, as `<Project-Name>_<date>.xlsx` (`GET /projects/{title}/export`, built with `openpyxl`).
 
-- **Columns:** `project_title, date, cv_no, payee, amount` (the import format, so the file can be imported again; the import ignores the rest), then `created_by, created_at, updated_by, updated_at` (full names; times in Philippine time).
-- **Opens in Excel:** UTF-8 with a BOM, so ñ and the like show correctly. Amounts are plain numbers with 2 decimals.
-- **Safe in Excel:** text that starts like a formula (`=`, `+`, `-`, `@`) gets a leading `'` so Excel shows it instead of running it.
-- Anyone signed in can export. Each export is logged (*Exported CSV*). The button is disabled for a project with no entries.
+- **Sheet "Entries":** `project_title, date, cv_no, payee, amount, created_by, created_at, updated_by, updated_at`. Header in bold on the app's yellow, frozen while scrolling; columns sized to fit; dates as real dates (`yyyy-mm-dd`), amounts as numbers (`#,##0.00`), times in Philippine time; filter buttons and banded rows (an Excel table). Prints landscape, one page wide, with the header on every page.
+- **Sheet "Summary":** project, number of entries, total amount, first and last entry date, who exported it and when.
+- **Importing it back:** the import takes CSV. In Excel, open the *Entries* sheet and use *Save As > CSV UTF-8*; the first five columns are the import format and the rest are ignored.
+- **Safe:** text is always stored as text, so a payee like `=HYPERLINK(...)` is shown as written, never run as a formula.
+- Anyone signed in can export. Each export is logged (*Exported to Excel*). The button is disabled for a project with no entries.
 
 ### 4.16 Profile picture and name (User Panel)
 

@@ -25,7 +25,7 @@ const ACTIONS = [
   ["edit_approved", "Edit approved"],
   ["edit_rejected", "Edit rejected"],
   ["import", "Imported file"],
-  ["export", "Exported CSV"],
+  ["export", "Exported to Excel"],
   ["project_create", "Created project"],
   ["project_archive", "Archived project"],
   ["project_restore", "Restored project"],

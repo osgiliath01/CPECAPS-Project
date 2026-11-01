@@ -222,34 +222,120 @@ async def import_disbursements(
 
 
 # ==========================================
-# EXPORT
+# EXPORT (Excel)
 # ==========================================
 
-# The first five columns are the import format, so an exported file can be imported again
-# (the extra columns are ignored by the import).
-EXPORT_COLUMNS = ["project_title", "date", "cv_no", "payee", "amount",
-                  "created_by", "created_at", "updated_by", "updated_at"]
+# Sheet "Entries" starts with the import columns, so it can be saved as CSV from Excel and
+# imported again (the import ignores the other columns). Sheet "Summary" has the totals.
+EXPORT_COLUMNS = [
+    # header,        width, number format
+    ("project_title", None, None),
+    ("date",          12,   "yyyy-mm-dd"),
+    ("cv_no",         None, None),
+    ("payee",         None, None),
+    ("amount",        16,   "#,##0.00"),
+    ("created_by",    None, None),
+    ("created_at",    17,   "yyyy-mm-dd hh:mm"),
+    ("updated_by",    None, None),
+    ("updated_at",    17,   "yyyy-mm-dd hh:mm"),
+]
+XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-def _safe_cell(value) -> str:
-    """Text that starts like a formula (=, +, -, @) gets a leading ' so Excel shows it as text
-    instead of running it."""
-    text = "" if value is None else str(value)
-    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
-
-
-def _local_stamp(moment) -> str:
+def _local_time(moment):
+    """Philippine time without a time zone (Excel has none)."""
     if not moment:
-        return ""
+        return None
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
-    return moment.astimezone(MANILA).strftime("%Y-%m-%d %H:%M")
+    return moment.astimezone(MANILA).replace(tzinfo=None)
 
 
 def _file_name(title: str) -> str:
     safe = "".join(ch if ch.isalnum() or ch in " -_" else " " for ch in title).strip()
     safe = "-".join(safe.split())[:80] or "project"
-    return f"{safe}_{datetime.now(MANILA):%Y-%m-%d}.csv"
+    return f"{safe}_{datetime.now(MANILA):%Y-%m-%d}.xlsx"
+
+
+def _text(cell, value) -> None:
+    """Puts text in a cell as plain text, even if it starts with "=" (never as a formula)."""
+    cell.value = "" if value is None else str(value)
+    cell.data_type = "s"
+
+
+def build_workbook(title: str, entries: list, exported_by: str) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Entries"
+    ws.append([name for name, _, _ in EXPORT_COLUMNS])
+    widths = [len(name) for name, _, _ in EXPORT_COLUMNS]
+
+    for row_no, e in enumerate(entries, start=2):
+        values = [
+            title, e.date, e.cv_no, e.payee, e.amount,
+            getattr(e, "created_by_name", None) or e.created_by, _local_time(e.created_at),
+            getattr(e, "updated_by_name", None) or e.updated_by, _local_time(e.updated_at),
+        ]
+        for col, (value, (name, _, fmt)) in enumerate(zip(values, EXPORT_COLUMNS), start=1):
+            cell = ws.cell(row=row_no, column=col)
+            if fmt:
+                cell.value = value
+                cell.number_format = fmt
+            else:
+                _text(cell, value)
+                widths[col - 1] = max(widths[col - 1], len(cell.value))
+
+    for col, (name, width, _) in enumerate(EXPORT_COLUMNS, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width or min(max(widths[col - 1] + 2, 10), 60)
+    ws.freeze_panes = "A2"  # the header stays visible while scrolling
+    # Header in the app's yellow, set on the cells so it shows in any spreadsheet program
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="1A1A1A")
+        cell.fill = PatternFill("solid", start_color="FFBC13")
+    last = get_column_letter(len(EXPORT_COLUMNS))
+    if entries:
+        table = Table(displayName="Entries", ref=f"A1:{last}{len(entries) + 1}")
+        table.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=True)
+        ws.add_table(table)  # banded rows and filter buttons in Excel
+    # Printing: landscape, all columns on one page width, header row on every page
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_title_rows = "1:1"
+
+    summary = wb.create_sheet("Summary")
+    total = sum((e.amount for e in entries), Decimal("0"))
+    rows = [
+        ("Project", title, None),
+        ("Entries", len(entries), "#,##0"),
+        ("Total amount (PHP)", total, "#,##0.00"),
+        ("First entry", min((e.date for e in entries), default=None), "yyyy-mm-dd"),
+        ("Last entry", max((e.date for e in entries), default=None), "yyyy-mm-dd"),
+        ("Exported by", exported_by, None),
+        ("Exported at", datetime.now(MANILA).replace(tzinfo=None), "yyyy-mm-dd hh:mm"),
+        ("Note", "Archived entries are not included.", None),
+    ]
+    for r, (label, value, fmt) in enumerate(rows, start=1):
+        summary.cell(row=r, column=1, value=label).font = Font(bold=True)
+        cell = summary.cell(row=r, column=2)
+        if fmt:
+            cell.value = value
+            cell.number_format = fmt
+            cell.alignment = Alignment(horizontal="left")
+        else:
+            _text(cell, value)
+    summary.column_dimensions["A"].width = 20
+    summary.column_dimensions["B"].width = min(max(len(title) + 2, 24), 70)
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
 
 
 @router.get("/projects/{project_title}/export")
@@ -258,41 +344,24 @@ def export_project(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(security.get_current_user),
 ):
-    """A project's active entries as a CSV file (UTF-8, opens in Excel), oldest first."""
+    """A project's active entries as an Excel file (.xlsx), oldest first."""
     summary = crud.get_project_summary(db, project_title)
     if not summary:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
     entries = sorted(summary["entries"], key=lambda e: (e.date, e.id))
-
-    out = io.StringIO()
-    writer = csv.writer(out, lineterminator="\r\n")
-    writer.writerow(EXPORT_COLUMNS)
-    for e in entries:
-        writer.writerow([
-            _safe_cell(summary["project_title"]),
-            e.date.isoformat(),
-            _safe_cell(e.cv_no),
-            _safe_cell(e.payee),
-            f"{e.amount:.2f}",
-            _safe_cell(getattr(e, "created_by_name", None) or e.created_by),
-            _local_stamp(e.created_at),
-            _safe_cell(getattr(e, "updated_by_name", None) or e.updated_by),
-            _local_stamp(e.updated_at),
-        ])
+    content = build_workbook(summary["project_title"], entries, current_user.name)
 
     project = db.query(models.Project).filter(models.Project.title == summary["project_title"]).first()
     activity.log(db, current_user.username, "export",
-                 f"Exported '{summary['project_title']}' to CSV ({len(entries)} entr{'y' if len(entries) == 1 else 'ies'})",
+                 f"Exported '{summary['project_title']}' to Excel ({len(entries)} entr{'y' if len(entries) == 1 else 'ies'})",
                  "project", project.id if project else None)
     db.commit()
 
-    name = _file_name(summary["project_title"])
-    # BOM first so Excel reads it as UTF-8 (ñ, ₱ and the like show correctly)
     return Response(
-        content="\ufeff" + out.getvalue(),
-        media_type="text/csv; charset=utf-8",
+        content=content,
+        media_type=XLSX_TYPE,
         headers={
-            "Content-Disposition": f'attachment; filename="{name}"',
+            "Content-Disposition": f'attachment; filename="{_file_name(summary["project_title"])}"',
             "Cache-Control": "no-store",
         },
     )
