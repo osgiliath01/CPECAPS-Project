@@ -23,6 +23,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import activity
@@ -109,6 +110,14 @@ def too_many_challenges(db: Session, user: models.User) -> bool:
     """True if this account had CHALLENGE_LIMIT sign-in attempts from other devices lately, so
     nobody can flood the signed-in person with prompts (or the Activity Log with entries)."""
     since = _now() - timedelta(minutes=CHALLENGE_LIMIT_MINUTES)
+    # A successful sign-in starts the count again (like the wrong-password lockout)
+    last_login = (
+        db.query(func.max(models.ActivityLog.created_at))
+        .filter(models.ActivityLog.actor == user.username, models.ActivityLog.action == "login")
+        .scalar()
+    )
+    if last_login is not None:
+        since = max(since, _aware(last_login))
     recent = (
         db.query(models.LoginChallenge.id)
         .filter(models.LoginChallenge.user_id == user.id, models.LoginChallenge.created_at > since)
