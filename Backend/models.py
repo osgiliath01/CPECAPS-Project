@@ -1,3 +1,4 @@
+from decimal import Decimal
 from datetime import datetime, timezone
 from sqlalchemy import JSON, Boolean, Column, Date, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, text
 from sqlalchemy.orm import relationship
@@ -28,9 +29,10 @@ class Project(Base):
         return len(self.disbursements)
 
     @property
-    def total_amount(self) -> float:
-        # Archived entries don't count toward totals
-        return sum(float(d.amount) for d in self.active_disbursements)
+    def total_amount(self) -> Decimal:
+        # Archived entries don't count toward totals. Added as Decimal, not float, so centavos
+        # stay exact (0.10 + 0.20 is 0.30, not 0.30000000000000004).
+        return sum((d.amount for d in self.active_disbursements), Decimal("0"))
 
 
 class Disbursement(Base):

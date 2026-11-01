@@ -134,7 +134,7 @@ def upload_avatar(
     """Sets the signed-in user's profile picture (JPEG, PNG or WebP, up to 1 MB)."""
     data = file.file.read(MAX_AVATAR_BYTES + 1)
     if len(data) > MAX_AVATAR_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "The picture is too large (1 MB at most).")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "The picture is too large (1 MB at most).")
     kind = _image_type(data)
     if kind not in _IMAGE_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Use a JPEG, PNG or WebP picture.")

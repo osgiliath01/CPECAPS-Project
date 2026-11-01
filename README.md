@@ -805,6 +805,9 @@ All changes are applied automatically when the backend starts:
 | `security.py` | changed | `get_current_superuser`; `get_current_user` blocks temporary passwords (`get_current_user_allow_temporary` allows them); deactivated accounts get `401`; `user_from_token` for streaming routes (doesn't hold a database connection) |
 | `crud.py` | changed | Archived projects and entries excluded from lists and summaries; hard-delete removed; project totals computed by the database; `get_active_disbursements` for the voucher list |
 | `schemas.py` | changed | `ProjectResponse.entry_count`; `DisbursementListItem` (an entry with its project title) |
+| `schemas.py` | changed | Entries: amount above 0, at most 99,999,999.99, up to 2 decimals; payee, CV number and project title cannot be blank (spaces trimmed) |
+| `models.py` | changed | Project totals added up exactly (Decimal instead of float) |
+| `tests/` | **new** | Automated tests (pytest); `requirements-dev.txt` and `pytest.ini` set them up |
 
 ### Project root
 
@@ -815,6 +818,7 @@ All changes are applied automatically when the backend starts:
 | `install-autodeploy.ps1` | **new** | Turns automatic deploys on or off (Windows scheduled task) |
 | `loadtest/locustfile.py` | **new** | Load test: simulated staff, admins and assistant users |
 | `.gitignore` | changed | Ignores `.deploy/` |
+| `test.ps1` | **new** | Runs the automated backend tests in Docker with a throwaway database (section 10) |
 
 ### Frontend (`Project/Frontend/src`, plus the build files in `Project/Frontend`)
 
@@ -874,6 +878,26 @@ All changes are applied automatically when the backend starts:
 ---
 
 ## 10. Testing checklist
+
+### Automated tests (run these first)
+
+`Backend/tests` holds about 230 automated tests of the backend's rules: sign-up and approval, sign-in and lockout, the one-device rule and its Allow/Block prompt, roles (staff are refused every admin action), entries and totals, requests and their review, archiving/restoring/permanent delete, the User Panel, Manage users, Excel export, CSV import and the assistant's guards. Run them before every deploy, from the project folder:
+
+```powershell
+.\test.ps1              # all tests, about 30 seconds after the first run
+.\test.ps1 -k sessions  # only tests with "sessions" in their name
+.\test.ps1 -x           # stop at the first failure
+```
+
+- Needs only Docker Desktop. It starts its **own throwaway database** (`caic-test-db`) and removes it afterwards; the real database, the running app and `Backend\.env` are never used, so it's safe while the app is live.
+- The tests empty every table before each test, so `tests/conftest.py` refuses to run unless the database name ends in `_test`.
+- The assistant tests replace the language model with a stand-in: they check the rules around it (which lookups each role gets, refusing attempts to get around the rules, hiding leaked instructions), not the quality of its answers.
+- Without Docker (a Python venv and any Postgres): `pip install -r Backend/requirements-dev.txt`, set `TEST_DATABASE_URL=postgresql+psycopg://postgres:<password>@localhost:5432/caic_db_test`, then run `python -m pytest -q` in `Backend`.
+- When you add a feature, add a test next to the similar ones (each file covers one area; `conftest.py` has helpers such as `add_entry` and the `admin` / `staff` fixtures that are already signed in).
+
+What the tests caught when they were written (fixed): project totals were added up with rounding errors (0.10 + 0.20 showed as 0.30000000000000004); the API accepted zero or negative amounts, amounts with more than 2 decimals, and blank payees, CV numbers or project titles; and an amount over 99,999,999.99 crashed the request (500) instead of being refused.
+
+### Manual checklist
 
 On the server, deploy with `.\deploy.ps1` (or `-Branch <name>`). Then refresh the app (Ctrl+F5) and sign in again so the new token is issued.
 

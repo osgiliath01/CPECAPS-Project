@@ -1,10 +1,16 @@
 import datetime as dt
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_serializer, model_validator
+
+
+# The amount column is NUMERIC(10, 2): at most 99,999,999.99, with centavos.
+Amount = Annotated[Decimal, Field(gt=0, le=Decimal("99999999.99"), decimal_places=2)]
+# Text that can't be empty or only spaces (surrounding spaces are removed)
+Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 
 
 # ==========================================
@@ -13,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_valid
 
 
 class ProjectCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=255)
+    title: Text
 
 
 class ProjectResponse(BaseModel):
@@ -31,18 +37,18 @@ class ProjectResponse(BaseModel):
 
 
 class DisbursementCreate(BaseModel):
-    project_title: str
-    cv_no: str
-    payee: str
+    project_title: Text
+    cv_no: Text
+    payee: Text
     date: date
-    amount: Decimal
+    amount: Amount
 
 
 class DisbursementUpdate(BaseModel):
     date: Optional[dt.date] = None
-    cv_no: Optional[str] = None
-    payee: Optional[str] = None
-    amount: Optional[Decimal] = None
+    cv_no: Optional[Text] = None
+    payee: Optional[Text] = None
+    amount: Optional[Amount] = None
     editor_name: str
     # The values the editor saw for the fields being changed. If they no longer match,
     # someone else changed the entry first and the edit is refused (409).
@@ -148,4 +154,4 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    username: Optional[str] = None

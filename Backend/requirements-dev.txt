@@ -1,0 +1,4 @@
+# For running the automated tests (see test.ps1 and README section 5). Not needed on the server.
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1
