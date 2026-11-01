@@ -130,7 +130,13 @@ try {
     Set-VersionStamp $commit $Branch
     Log "Deploying $Branch ($short)..."
     $compose = Join-Path $path "Backend\docker-compose.yml"
-    docker compose -p $Project -f $compose up -d --build
+    # Secrets (JWT_SECRET_KEY) live in the working folder's Backend\.env, which isn't in Git,
+    # so the checkout doesn't have it: pass it explicitly.
+    $envFile = Join-Path $Root "Backend\.env"
+    if (-not (Test-Path $envFile)) {
+        throw "Backend\.env is missing. Copy Backend\.env.example to Backend\.env and set JWT_SECRET_KEY (see README)."
+    }
+    docker compose -p $Project -f $compose --env-file $envFile up -d --build
     Assert-Ok "Building and starting the stack"
     Set-Content -Path $stateFile -Value $commit -ErrorAction Stop
     Log "Deployed $Branch ($short), version $($env:APP_VERSION). Open http://localhost/ to check."

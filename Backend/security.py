@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -10,7 +11,15 @@ from sqlalchemy.orm import Session
 import database
 import models
 
-SECRET_KEY = "super_caic1234"
+# The key that signs sign-in tokens. Anyone who knows it can make a token for any account,
+# including an admin, so it is never written in the code: it comes from Backend/.env
+# (JWT_SECRET_KEY), which is not committed. Changing it signs everyone out once.
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "").strip()
+if len(SECRET_KEY) < 32:
+    # Only for running the backend by hand on a developer's laptop (uvicorn ... --reload).
+    # Docker Compose refuses to start without a real key, so the server never uses this.
+    print("WARNING: JWT_SECRET_KEY is not set (or too short); using an insecure development key.")
+    SECRET_KEY = "development-only-key-not-for-the-server-0000"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 

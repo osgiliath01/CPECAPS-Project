@@ -1,5 +1,7 @@
 # Settings shared by the two backend containers (api and assistant)
 x-backend-env: &backend-env
+  # Signs sign-in tokens. Kept in Backend/.env (not committed); see .env.example
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in Backend/.env (copy Backend/.env.example)}
   # "db" is the database container below; the backend reaches it inside Docker
   DATABASE_URL: postgresql+psycopg://postgres:caic123@db:5432/caic_db
   # The assistant's model server and model (see the ollama service below and chatbot.py)
