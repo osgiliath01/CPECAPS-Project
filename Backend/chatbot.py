@@ -210,10 +210,14 @@ def tool_search_entries(db: Session, args: dict, user: dict) -> dict:
     }
 
 
+_SMALLEST = {"smallest", "ascending", "asc", "least", "lowest", "bottom"}
+
+
 def tool_summarize(db: Session, args: dict, user: dict) -> dict:
     group = (args.get("group_by") or "project").lower()
     conditions, notes = _filters(db, args)
     top = max(1, min(int(args.get("top") or 10), 50))
+    smallest_first = str(args.get("order") or "").lower() in _SMALLEST
     count = func.count(models.Disbursement.id)
     total = func.coalesce(func.sum(models.Disbursement.amount), 0)
 
@@ -230,7 +234,8 @@ def tool_summarize(db: Session, args: dict, user: dict) -> dict:
         group = "payee" if group == "payee" else "project"
         rows = (
             db.query(key, count, total).select_from(models.Disbursement).join(models.Project)
-            .filter(*conditions).group_by(key).order_by(total.desc()).limit(top).all()
+            .filter(*conditions).group_by(key)
+            .order_by(total.asc() if smallest_first else total.desc(), key).limit(top).all()
         )
         groups = [{group: k, "entries": c, "total": _money(t)} for k, c, t in rows]
 
@@ -241,8 +246,30 @@ def tool_summarize(db: Session, args: dict, user: dict) -> dict:
     overall = (
         db.query(count, total).select_from(models.Disbursement).join(models.Project).filter(*conditions).one()
     )
-    return {**notes, "grouped_by": group, "number_of_groups": groups_total, "showing_top": len(groups),
-            "overall_entries": overall[0], "overall_total": _money(overall[1]), "groups": groups}
+    result = {**notes, "grouped_by": group,
+              "order": "months in order" if group == "month" else (
+                  "smallest total first" if smallest_first else "largest total first"),
+              "number_of_groups": groups_total, "showing": len(groups),
+              "overall_entries": overall[0], "overall_total": _money(overall[1]), "groups": groups}
+
+    # Projects without any (matching) entries have a total of 0 but can't appear in a ranking
+    # built from entries, so report them separately, e.g. for "which project has the smallest total"
+    if group == "project" and not (args.get("project") or args.get("payee") or args.get("cv_no")):
+        empty = (
+            db.query(models.Project.title)
+            .filter(models.Project.is_archived.is_(False),
+                    ~db.query(models.Disbursement.id).filter(*conditions,
+                        models.Disbursement.project_id == models.Project.id).correlate(models.Project).exists())
+            .order_by(models.Project.title).all()
+        )
+        if empty:
+            result["projects_with_total_0"] = {
+                "count": len(empty),
+                "titles": [t for (t,) in empty[:10]] + (["…"] if len(empty) > 10 else []),
+                "note": "These have no entries (in the chosen period), so their total is PHP 0.00 and they "
+                        "aren't in the groups list. They are the smallest if they count.",
+            }
+    return result
 
 
 def tool_overview(db: Session, args: dict, user: dict) -> dict:
@@ -354,10 +381,13 @@ TOOLS = {
     )),
     "summarize": (tool_summarize, False, "Adding up totals…", _tool(
         "summarize",
-        "Rank or total spending: amounts grouped by project, payee or month, biggest first (months in order). "
-        "Use for 'which project spent the most', 'top payees', 'spending per month', 'total spending this year'. "
-        "It lists at most 50 groups; to count projects or payees use overview instead.",
+        "Rank or total spending: amounts grouped by project, payee or month. Largest total first by default; "
+        "use order 'smallest' for 'smallest', 'least', 'lowest' questions. Months are always in date order. "
+        "Use for 'which project spent the most/least', 'top payees', 'spending per month', 'total spending this "
+        "year'. It lists at most 50 groups; to count projects or payees use overview instead.",
         {"group_by": {"type": "string", "enum": ["project", "payee", "month"]},
+         "order": {"type": "string", "enum": ["largest", "smallest"],
+                   "description": "largest (default) or smallest total first"},
          **_FILTER_PROPS, "top": {"type": "integer", "description": "How many groups to return (max 50)"}},
     )),
     "recent_activity": (tool_recent_activity, True, "Checking the Activity Log…", _tool(
@@ -529,6 +559,9 @@ def _system_prompt(user: dict) -> str:
         "- For ANY question about projects, payees, vouchers, amounts or dates, call a tool first. "
         "Never guess or invent numbers, names or dates.\n"
         "- Use the totals and counts the tool returns exactly as given; don't add up or count things yourself.\n"
+        "- A ranking only shows the groups it returned. For 'smallest/least/lowest', call summarize with order "
+        "'smallest'; never treat the last item of a largest-first list as the smallest. When comparing a "
+        "specific project with a ranking, compare the amounts carefully and look the ranking up again if needed.\n"
         "- Only use project or payee filters for names the user actually mentioned.\n"
         "- Every question about a project, payee or voucher needs a fresh tool call. Never reuse an earlier "
         "answer's entries or figures for a different name; only reformat an earlier answer (e.g. 'tabulate it') "
@@ -565,7 +598,9 @@ _DATA_WORDS = re.compile(
     r"month|monthly|year|pending|requests?|activity|happened)\b",
     re.I,
 )
-_RANK_WORDS = re.compile(r"\b(most|least|top|highest|lowest|biggest|largest|rank\w*)\b", re.I)
+_RANK_WORDS = re.compile(r"\b(most|least|top|highest|lowest|biggest|largest|smallest|fewest|minimum|maximum|"
+                         r"cheapest|rank\w*)\b", re.I)
+_SMALL_WORDS = re.compile(r"\b(least|lowest|smallest|fewest|minimum|cheapest|bottom)\b", re.I)
 _MONTH_WORDS = re.compile(r"\b(per month|monthly|each month|by month|month by month)\b", re.I)
 _PAYEE_WORDS = re.compile(r"\b(payees?|suppliers?|contractors?|paid to|vendors?)\b", re.I)
 _TOKENS = re.compile(r"[a-z0-9ñ]+")
@@ -746,7 +781,8 @@ def _auto_lookup(question: str, user: dict) -> Optional[tuple]:
                                   **({"payee": payee} if payee else {}), **dates}
     if _RANK_WORDS.search(q) or "total" in q or "how much" in q:
         group = "payee" if _PAYEE_WORDS.search(q) else "project"
-        return "summarize", {"group_by": group, "top": 10, **dates}
+        order = {"order": "smallest"} if _SMALL_WORDS.search(q) else {}
+        return "summarize", {"group_by": group, "top": 10, **order, **dates}
     if _looks_like_data(question):
         return "search_entries", {**dates, "limit": 10}
     return None
