@@ -68,7 +68,11 @@ def presence(user: models.User) -> dict:
     minutes), or "offline", with when the account was last seen and last used."""
     seen = _aware(user.session_seen_at)
     used = _aware(user.last_active_at)
-    if session_is_live(user):
+    if security.single_session_applies(user):
+        live = session_is_live(user)
+    else:  # no session to follow (exempt accounts): open if its app was seen lately
+        live = bool(seen and (_now() - seen).total_seconds() < SESSION_STALE_SECONDS)
+    if live:
         if used and (_now() - used).total_seconds() < IDLE_AFTER_SECONDS:
             state = "active"
         else:
@@ -103,12 +107,13 @@ def issue_token(user: models.User, sid: Optional[str]) -> str:
 
 
 def touch(db: Session, user_id: int, sid: Optional[str]) -> None:
-    """Notes that the device with this session is still there (called by the live connection)."""
-    if not sid:
-        return
-    db.query(models.User).filter(models.User.id == user_id, models.User.session_id == sid).update(
-        {models.User.session_seen_at: _now()}, synchronize_session=False
-    )
+    """Notes that the device with this session is still there (called by the live connection).
+    Accounts without a session (exempt from the one-device rule, e.g. load-test accounts) are
+    noted too, so Active Status can still show them as online."""
+    query = db.query(models.User).filter(models.User.id == user_id)
+    if sid:
+        query = query.filter(models.User.session_id == sid)
+    query.update({models.User.session_seen_at: _now()}, synchronize_session=False)
 
 
 def describe_device(user_agent: str) -> str:

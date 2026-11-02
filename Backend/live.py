@@ -106,7 +106,7 @@ def _still_allowed(user_id: int, token_version: int, sid=None) -> bool:
         ok = bool(u and u.is_active and u.is_approved and not u.must_change_password
                   and (u.token_version or 0) == token_version
                   and (not security.single_session_applies(u) or u.session_id == sid))
-        if ok and sid:
+        if ok:
             sessions.touch(db, user_id, sid)
             db.commit()
         return ok

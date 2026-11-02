@@ -237,3 +237,16 @@ def test_staff_can_see_who_is_online(client, db, admin, staff):
 
 def test_who_is_online_needs_sign_in(client):
     assert client.get("/users/online").status_code == 401
+
+
+def test_exempt_account_shows_online_while_its_app_is_open(client, db, monkeypatch, admin):
+    """Load-test accounts have no single session, but an open app still counts as online."""
+    import live
+    monkeypatch.setattr("security.SINGLE_SESSION_EXEMPT", {"loadtest"})
+    uid = make_user("loadtest")
+    login(client, "loadtest")
+    assert status_of(client, admin, "loadtest")["presence"] == "offline"  # app not open yet
+    assert live._still_allowed(uid, 0, None)  # what the live connection does every 30 s
+    assert status_of(client, admin, "loadtest")["presence"] == "active"
+    set_user(db, uid, session_seen_at=ago(sessions.SESSION_STALE_SECONDS + 5))
+    assert status_of(client, admin, "loadtest")["presence"] == "offline"

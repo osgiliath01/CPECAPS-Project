@@ -402,7 +402,8 @@ export function Presence({ u }) {
   } else if (seen) {
     main = <span title={fmtStamp(seen)}>Last seen {timeAgo(seen)}</span>;
   } else {
-    main = <span className="muted">Never signed in</span>;
+    // Admins get the last sign-in, so they can tell "never"; staff only see that it's offline
+    main = <span className="muted">{"last_login" in u ? "Never signed in" : "Offline"}</span>;
   }
   return (
     <>
