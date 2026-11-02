@@ -55,7 +55,7 @@ This README covers the `feature/activity-log-archiving` branch: how to use, deve
 | Archived items | — | Restorable for **30 days**, then **deleted permanently** by the backend |
 | History | None | **Activity Log** records every action, kept forever |
 | Forgotten password | No way to recover | **Forgot password?** on the login page; an admin approves and hands over a temporary password |
-| Accounts | Managed only through the database | **Manage users** screen: rename, change role, deactivate, reset password, delete |
+| Accounts | Managed only through the database | **Manage Users** screen: rename, change role, deactivate, reset password, delete |
 | Admin role | Existed in the database but the app ignored it | Enforced by the backend on every protected route and shown in the interface |
 | Import File | Disabled | Admins import entries from CSV, with a preview and per-row validation |
 | Other people's changes | Only visible after reloading the page | Appear automatically within ~2 seconds |
@@ -244,12 +244,12 @@ There are two roles. A user's role is stored in `users.is_superuser`.
 | Edit an entry | Request only | ✓ directly |
 | Archive an entry | Request only | ✓ directly |
 | Archive / restore a project | — | ✓ |
-| See own requests and their outcome (**My requests**, in the user menu) | ✓ | — |
+| See own requests and their outcome (**My Requests**, in the user menu) | ✓ | — |
 | Approve / reject requests (with an optional note) | — | ✓ (not their own) |
 | Approve / reject password resets | — | ✓ (not their own) |
 | Restore archived entries and projects | — | ✓ |
 | Activity Log | — | ✓ |
-| Manage users | — | ✓ |
+| Manage Users | — | ✓ |
 
 **How it's enforced.** The backend checks permissions on every request using two dependencies in `security.py`:
 
@@ -295,7 +295,7 @@ Normal users can't archive or edit entries directly. They send a request, and an
 - Approving an edit applies the new values and records the **requester** as the editor. Approving an archive archives the entry.
 - An admin can't review their own request (shown as "Yours").
 
-**Seeing the outcome (normal user), in My requests** (user menu at the top right)**:**
+**Seeing the outcome (normal user), in My Requests** (user menu at the top right)**:**
 
 - Lists every request they've sent: type, entry, what they asked, status (**Pending / Approved / Rejected**), the admin's note, who decided and when.
 
@@ -373,9 +373,9 @@ Accounts have no email address, so resets are approved by an admin:
 
 ### 4.9 User management
 
-Admins open **Manage users** from the user menu (top right).
+Admins open **Manage Users** from the user menu (top right).
 
-**New accounts need an admin's approval.** An account made with **Create account** on the sign-in page starts as **Waiting for approval**: the person sees "Account created. An admin has to approve it before you can sign in.", and signing in says the account is waiting until it's approved (only after a correct password, so it doesn't reveal which usernames exist). Admins get a red badge on their avatar and on **Manage users**; waiting accounts are listed first with a **Review** button:
+**New accounts need an admin's approval.** An account made with **Create account** on the sign-in page starts as **Waiting for approval**: the person sees "Account created. An admin has to approve it before you can sign in.", and signing in says the account is waiting until it's approved (only after a correct password, so it doesn't reveal which usernames exist). Admins get a red badge on their avatar and on **Manage Users**; waiting accounts are listed first with a **Review** button:
 
 - **Approve** lets the account sign in (logged as *Account approved*).
 - **Reject** removes the account, so the username can be used again (logged as *Account rejected*).
@@ -401,7 +401,7 @@ Deactivating is usually better than deleting: if a deleted username is registere
 
 - **Focus ring:** keyboard focus is now yellow (`#ffbc13`) everywhere, matching the search bar, instead of black.
 - **Text boxes in dialogs** (`.dialog textarea`) match the other fields: rounded corners, same border and font, vertical resizing only.
-- **Wide dialogs** (`.dialog-wide`, up to 980px) for the Activity Log, My requests and Manage users. Tables scroll within them on narrow screens.
+- **Wide dialogs** (`.dialog-wide`, up to 980px) for the Activity Log, My Requests and Manage Users. Tables scroll within them on narrow screens.
 - **Clipped focus rings** inside scrolling areas were fixed with inner padding.
 - **Badge classes** use an `act-` / `st-` prefix. The unprefixed `login` class was picking up the login page's full-screen style.
 - **Names with ñ** and other non-English characters now display correctly. The sign-in token is decoded as UTF-8 in `api.js → decodeToken`.
@@ -430,7 +430,7 @@ Test files are in `sample_data/`: `disbursements_import_sample.csv` (100 project
 Changes made by anyone appear on everyone's screen within about two seconds, without reloading.
 
 - **How it works:** every change already writes a row to the Activity Log. The backend checks that table every 1.5 seconds and pushes a small notice ("an entry was updated by Janjan") to every open browser over one long-lived connection (Server-Sent Events, `GET /live`). The browser then reloads what it's showing. The notice never contains the data itself.
-- **What refreshes:** Voucher Control, the open project's entries, and any open window: Activity Log (all tabs), My requests, Manage users. Note fields you're typing in the Requests tab are kept.
+- **What refreshes:** Voucher Control, the open project's entries, and any open window: Activity Log (all tabs), My Requests, Manage Users. Note fields you're typing in the Requests tab are kept.
 - **Toast:** "Updated by Janjan." when someone else changed entries or projects. Your own actions don't trigger it.
 - **Live indicator** in the top bar: a green **Live** dot when connected, yellow **Reconnecting…** otherwise. The app reconnects by itself and catches up on anything missed.
 - **Privacy:** normal users don't receive account-related notices (sign-ins, resets, user changes).
@@ -520,11 +520,11 @@ Everyone's **User Panel** (menu at the top right) shows their profile card:
 - **Name:** **Edit** next to the name.
   - **Staff** send a request (**Request change**). The card shows *Waiting for approval: <new name>* with **Withdraw**; sending another request replaces the waiting one. If an admin rejects it, the card says so (with the admin's note) for 14 days.
   - **Admins** change their own name straight away (logged as *Changed name*).
-- **Admins review** name changes in **User Panel > Manage users**, above the user list, with an optional note. They're counted in the red badges (menu button, User Panel, Manage users tab). An admin can't review their own request.
+- **Admins review** name changes in **User Panel > Manage Users**, above the user list, with an optional note. They're counted in the red badges (menu button, User Panel, Manage Users tab). An admin can't review their own request.
 - **Your numbers** (cards at the top of the right side, for everyone): entries you added this month and their total, all your entries with their total and how many projects they're in, edits this month (admins) or edit requests this month (staff), and your requests (pending / approved / rejected). Admins also see how many requests they reviewed this month. Counts only active entries in active projects; "this month" follows Philippine time (`GET /me/stats`).
-- **My activity** (a tab for everyone): what you did in the app, plus what admins did to your account (password reset, name approved…), newest first, 20 at a time with **Show more**. Questions to the assistant aren't included.
+- **My Activity** (a tab for everyone): what you did in the app, plus what admins did to your account (password reset, name approved…), newest first, 20 at a time with **Show more**. Questions to the assistant aren't included.
 - **Sign-in security** (on the profile card): your previous sign-in, wrong passwords for your username since then (highlighted in red, with a hint, if there were any), wrong passwords in the last 30 days, and when the password was last changed and by whom. **Sign out on all devices** ends every session of the account, this one included: each account has a `token_version` that's put in its sign-in tokens, and this raises it, so older tokens are refused (`401`) and open live connections close.
-- **Profile pictures in lists:** next to names in Manage users, in name-change requests, and next to *Created by* in Summary of Expenses.
+- **Profile pictures in lists:** next to names in Manage Users, in name-change requests, and next to *Created by* in Summary of Expenses.
 - When a name change is approved, the person's screens update live (their own account events are now sent to them, not only to admins). Entries show the new name through the full-name lookup (4.9 / *created by*).
 
 ### 4.17 One device at a time
@@ -562,9 +562,9 @@ A sign-in ends after **30 minutes without activity**, not 30 minutes after signi
 - **Mark as done ✓** ticks a guide off. Progress (*5 of 24 done*) is remembered in that browser for each user; **Reset** clears it.
 - **Keeping it current:** button and label names in the steps are written exactly as they appear in the app (shown in bold). When a screen changes, update its guide in `help/guides.js`.
 
-### 4.17c Active status (who is online)
+### 4.17c Active Status (who is online)
 
-**User Panel → Active status** (everyone) and **Manage users** (admins) show who has the app open:
+**User Panel → Active Status** (staff) and **Manage Users** (admins) show who has the app open:
 
 - A line above the list counts **active**, **idle** and **offline** accounts; **Online now only** filters the list.
 - **Active** (green dot on the picture): the app is open and was used (clicks, typing, scrolling) in the last ~7 minutes. **Idle** (yellow): open, but not used for longer. **Offline**: closed, signed out or disconnected for over a minute; the **Online** column then says when they were last seen.
@@ -589,7 +589,7 @@ If the app ever loads something from another site (a new font, a map, an analyti
 Below 640px wide (phones), the app switches layout (`App.css`, section *Phones*; checked at 390px and 360px):
 
 - **Header:** the logo, the live dot (dot only) and a compact menu button (picture only) on one row; search and filters below.
-- **Tables become cards** (Voucher Control, Summary of Expenses, Activity Log, requests, Manage users, My requests, My activity): one card per row, each value with its column name on the left. The first column (project title or entry date) is the card's heading, and the sort buttons stay as a row above. `utils/tableLabels.js` copies each column's header onto its cells (`data-label`), so the table components didn't need changing; a new table with the class `vtable` or `review-table` works the same way automatically.
+- **Tables become cards** (Voucher Control, Summary of Expenses, Activity Log, requests, Manage Users, My Requests, My Activity): one card per row, each value with its column name on the left. The first column (project title or entry date) is the card's heading, and the sort buttons stay as a row above. `utils/tableLabels.js` copies each column's header onto its cells (`data-label`), so the table components didn't need changing; a new table with the class `vtable` or `review-table` works the same way automatically.
 - **Pages:** smaller titles, buttons side by side, extra space at the bottom for the chat button, tabs that scroll sideways, stat cards in two columns (one below 380px), dialogs at full width that scroll when tall, and larger touch targets.
 - **Testing:** build the demo (`$env:VITE_DEMO="true"; npx vite build --base ./`) and open it in the browser's device mode (F12, then the phone icon), or open the shared link on a phone.
 
@@ -784,7 +784,7 @@ All changes are applied automatically when the backend starts:
 | `password_change` | Changed password | Own password changed, or a temporary one replaced | user |
 | `reset_requested` | Reset requested | Forgot password submitted | user |
 | `reset_approved` / `reset_rejected` | Reset approved / rejected | An admin decides | user |
-| `admin_reset` | Password reset by admin | Reset from Manage users | user |
+| `admin_reset` | Password reset by admin | Reset from Manage Users | user |
 | `user_update` | Updated account | Rename, role or status change | user |
 | `user_delete` | Deleted account | Account deleted | user |
 | `chat` | Asked the assistant | No longer recorded (older rows only, hidden by default) | user |
@@ -800,9 +800,9 @@ All changes are applied automatically when the backend starts:
 |---|---|---|
 | `auth.py` | changed | Main app. New routers registered; startup database upgrade; hourly purge (`lifespan`); token carries name, role and temporary-password flag; every route logs its action; edit and archive are admin-only; archive replaces delete; project archive route; archived project titles are blocked |
 | `activity.py` | **new** | Logging helpers; archive, restore and purge logic; Activity Log, Archived and Restore routes; `RETENTION_DAYS` |
-| `deletion_requests.py` | **new** | Archive and edit requests, My requests, approve/reject with notes |
+| `deletion_requests.py` | **new** | Archive and edit requests, My Requests, approve/reject with notes |
 | `password_resets.py` | **new** | Forgot-password flow and temporary password generator |
-| `users_admin.py` | **new** | Manage users routes with self and last-admin protection |
+| `users_admin.py` | **new** | Manage Users routes with self and last-admin protection |
 | `profiles.py` | **new** | Own profile: picture upload/remove, name-change requests and their review |
 | `imports.py` | **new** | CSV import with preview and per-row validation |
 | `live.py` | **new** | Live updates: Activity Log watcher and `/live` stream |
@@ -838,7 +838,7 @@ All changes are applied automatically when the backend starts:
 | `App.css` | changed | Yellow focus ring, textarea styling, wide dialogs, tabs, badges, filters, countdowns, temporary-password box, user panel, Live dot, import window, larger chat window and chat tables |
 | `components/Login.jsx` | changed | **Forgot password?** mode and confirmation |
 | `components/ForcePasswordChange.jsx` | **new** | Forced new-password screen |
-| `components/Dashboard.jsx` | changed | Activity Log / My requests buttons; Manage users; request-based editing for normal users; project archiving; import; live updates and Live dot; passes the user to the assistant |
+| `components/Dashboard.jsx` | changed | Activity Log / My Requests buttons; Manage Users; request-based editing for normal users; project archiving; import; live updates and Live dot; passes the user to the assistant |
 | `components/SummaryOfExpenses.jsx` | changed | Edit / Archive for admins, Request edit / Request archive for users; reason box |
 | `components/EntryDialog.jsx` | changed | **Request changes** mode with an optional reason |
 | `components/ProjectsTable.jsx` | changed | Admin **Archive** button and confirmation |
@@ -846,8 +846,8 @@ All changes are applied automatically when the backend starts:
 | `components/DeletionRequests.jsx` | **new** | Requests tab; shared request display pieces |
 | `components/MyRequests.jsx` | **new** | Normal users' request history |
 | `components/PasswordResets.jsx` | **new** | Admin reset approvals with one-time password display |
-| `components/UsersDialog.jsx` | **new** | Manage users window |
-| `components/AdminMenu.jsx` | changed | User menu: **Activity Log** and **Manage users** for admins, **My requests** for normal users, and the version |
+| `components/UsersDialog.jsx` | **new** | Manage Users window |
+| `components/AdminMenu.jsx` | changed | User menu: **Activity Log** and **Manage Users** for admins, **My Requests** for normal users, and the version |
 | `components/ImportDialog.jsx` | **new** | Import window with preview |
 | `components/ChatWidget.jsx` | changed | Connected to the assistant, with streaming, Stop, New chat and Expand |
 | `components/ChatFormat.jsx` | **new** | Shows tables and **bold** in assistant answers |
@@ -890,7 +890,7 @@ All changes are applied automatically when the backend starts:
 
 ### Automated tests (run these first)
 
-`Backend/tests` holds about 230 automated tests of the backend's rules: sign-up and approval, sign-in and lockout, the one-device rule and its Allow/Block prompt, roles (staff are refused every admin action), entries and totals, requests and their review, archiving/restoring/permanent delete, the User Panel, Manage users, Excel export, CSV import and the assistant's guards. Run them before every deploy, from the project folder:
+`Backend/tests` holds about 230 automated tests of the backend's rules: sign-up and approval, sign-in and lockout, the one-device rule and its Allow/Block prompt, roles (staff are refused every admin action), entries and totals, requests and their review, archiving/restoring/permanent delete, the User Panel, Manage Users, Excel export, CSV import and the assistant's guards. Run them before every deploy, from the project folder:
 
 ```powershell
 .\test.ps1              # all tests, about 30 seconds after the first run
@@ -919,7 +919,7 @@ On the server, deploy with `.\deploy.ps1` (or `-Branch <name>`). Then refresh th
 
 - [ ] Normal user: **Request edit** → change the amount → Send. The table still shows the old amount.
 - [ ] Admin: Activity Log → Requests shows old → new. Add a note and approve. The table shows the new amount.
-- [ ] Normal user: **My requests** shows *Approved* and the note.
+- [ ] Normal user: **My Requests** shows *Approved* and the note.
 - [ ] Repeat with **Request archive** and **Reject**.
 
 **Archiving**
@@ -940,7 +940,7 @@ On the server, deploy with `.\deploy.ps1` (or `-Branch <name>`). Then refresh th
 
 **Users**
 
-- [ ] Admin: Manage users → a user → Make admin, Deactivate (they can't sign in), Reactivate.
+- [ ] Admin: Manage Users → a user → Make admin, Deactivate (they can't sign in), Reactivate.
 - [ ] Trying to deactivate yourself, or the only admin, is refused.
 
 **Import**
@@ -983,7 +983,7 @@ On the server, deploy with `.\deploy.ps1` (or `-Branch <name>`). Then refresh th
 
 | Kind | Share | What they do |
 |---|---|---|
-| `StaffUser` | 8 of 9 | Keep a live-updates connection open; open Voucher Control (the project list plus one summary per project, as the screens do); open projects; check My requests; with `LT_WRITE=1`, add entries to the "ZZ Load Test" project |
+| `StaffUser` | 8 of 9 | Keep a live-updates connection open; open Voucher Control (the project list plus one summary per project, as the screens do); open projects; check My Requests; with `LT_WRITE=1`, add entries to the "ZZ Load Test" project |
 | `AdminUser` | 1 of 9 | Same browsing, plus the Activity Log, requests, archived items and users (only if an admin test account is set) |
 | `AssistantUser` | optional | Asks the assistant questions; reports "first words" and "whole answer" times (only with `LT_ASSISTANT=1`) |
 
@@ -992,7 +992,7 @@ Each pauses 5–30 seconds between actions, like a person reading. Each account 
 **Before testing**
 
 1. **Back up the database:** `docker compose -p backend exec db pg_dump -U postgres caic_db > backup.sql`
-2. **Create test accounts:** on the sign-in page, create e.g. `loadtest` and `loadtestadmin`, then make `loadtestadmin` an admin in **Manage users**.
+2. **Create test accounts:** on the sign-in page, create e.g. `loadtest` and `loadtestadmin`, then make `loadtestadmin` an admin in **Manage Users**.
 3. Test at a **quiet time**, from a **different computer** than the server (otherwise the test competes with the server for CPU), connected to Tailscale.
 
 **Running it** (PowerShell, project folder):

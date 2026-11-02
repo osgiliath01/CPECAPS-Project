@@ -236,7 +236,7 @@ def cancel_my_name_request(
     return None
 
 
-# ---------- My activity and sign-in security ----------
+# ---------- My Activity and sign-in security ----------
 
 class ActivityItem(BaseModel):
     id: int

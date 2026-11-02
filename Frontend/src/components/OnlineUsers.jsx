@@ -4,7 +4,7 @@ import { OnlineSummary, Presence, PresenceAvatar } from "./UsersDialog";
 const REFRESH_MS = 30 * 1000; // re-checked this often while the list is open
 
 // Everyone: who on the team has the app open right now. Admins see the same thing,
-// with more details, in Manage users.
+// with more details, in Manage Users.
 export default function OnlineUsers({ api, user, version }) {
   const [people, setPeople] = useState(null);
   const [onlineOnly, setOnlineOnly] = useState(false);

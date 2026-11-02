@@ -138,7 +138,7 @@ class DeletionRequest(Base):
     requested_by = Column(String, nullable=False)
     reviewed_by = Column(String, nullable=True)
     review_note = Column(String(500), nullable=True)
-    # False once an admin answers, until the requester opens My requests (drives their badge)
+    # False once an admin answers, until the requester opens My Requests (drives their badge)
     requester_seen = Column(Boolean, default=False, server_default=text("false"), nullable=False)
 
     created_at = Column(

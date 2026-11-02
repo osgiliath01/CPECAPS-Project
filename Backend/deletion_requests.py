@@ -119,7 +119,7 @@ def _mark_reviewed(req: models.DeletionRequest, user: models.User, new_status: s
     req.status = new_status
     req.reviewed_by = user.username
     req.reviewed_at = datetime.now(timezone.utc)
-    req.requester_seen = False  # the requester gets a badge until they open My requests
+    req.requester_seen = False  # the requester gets a badge until they open My Requests
     note = (payload.note or "").strip() if payload else ""
     req.review_note = note or None
 

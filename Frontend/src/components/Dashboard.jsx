@@ -152,7 +152,7 @@ export default function Dashboard({ api, user: sessionUser, onLogout, onSessionE
 
   // Admins: how many archive/edit requests and password resets are waiting. New requests,
   // approvals and rejections all arrive as live updates, so this refreshes on its own.
-  // Staff: how many of their requests an admin has answered since they last opened My requests.
+  // Staff: how many of their requests an admin has answered since they last opened My Requests.
   useEffect(() => {
     if (!api.listRequests) return; // demo mode
     let cancelled = false;

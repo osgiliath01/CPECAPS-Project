@@ -170,7 +170,7 @@ export default function UsersDialog({ api, user, version, onClose, onChanged }) 
           <path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         </svg>
       </button>
-      <h2>Manage users</h2>
+      <h2>Manage Users</h2>
       <div className="log-body">
         <UsersContent api={api} user={user} version={version} onChanged={onChanged} />
       </div>

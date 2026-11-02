@@ -143,7 +143,7 @@ export const GUIDES = [
     steps: [
       "Open the project with **View** and click **Request archive** on the entry's row.",
       "Write the **Reason**, e.g. *Duplicate entry*.",
-      "Click **Send request**. An admin decides; you'll see the answer in **My requests**.",
+      "Click **Send request**. An admin decides; you'll see the answer in **My Requests**.",
     ],
     go: { page: "home" },
   },
@@ -201,10 +201,10 @@ export const GUIDES = [
     title: "Track your requests",
     summary: "See whether your edit and archive requests were approved.",
     steps: [
-      "Click your picture at the top right, then **User Panel**. **My requests** opens first.",
+      "Click your picture at the top right, then **User Panel**. **My Requests** opens first.",
       "Use the chips to show **All**, **Pending**, **Approved** or **Rejected**.",
       "Each request shows the admin's response and note. New answers are highlighted with **New**.",
-      "A **red number** on your picture means an admin has answered; it clears when you open My requests.",
+      "A **red number** on your picture means an admin has answered; it clears when you open My Requests.",
     ],
     go: { page: "user", section: "requests" },
   },
@@ -230,7 +230,7 @@ export const GUIDES = [
       "Copy the **temporary password** shown (it's shown only once) and give it to the person privately.",
       "They sign in with it and must choose a new password straight away.",
     ],
-    tips: ["Manage users → Manage → **Reset password** does the same without a request."],
+    tips: ["Manage Users → Manage → **Reset password** does the same without a request."],
     go: { page: "user", section: "activity" },
   },
   {
@@ -238,7 +238,7 @@ export const GUIDES = [
     title: "Approve new accounts and name changes",
     summary: "Let new people in, and approve staff name changes (admins).",
     steps: [
-      "Open **User Panel → Manage users**. A red number on that tab means someone is waiting.",
+      "Open **User Panel → Manage Users**. A red number on that tab means someone is waiting.",
       "**Name change requests** are listed first: optionally add a note, then **Approve** or **Reject**.",
       "In the user list, new accounts are shown first as **Waiting for approval**. Click **Review**.",
       "**Approve** lets them sign in. **Reject** removes the account so the username can be used again.",
@@ -296,7 +296,7 @@ export const GUIDES = [
     summary: "Your work this month, and everything you've done.",
     steps: [
       "Open **User Panel**. The cards at the top show your entries this month, all your entries and totals, your edits and your requests.",
-      "The **My activity** tab lists what you did, grouped by day, plus what admins did to your account.",
+      "The **My Activity** tab lists what you did, grouped by day, plus what admins did to your account.",
       "Sign-ins are hidden; tick **Show sign-ins** to include them. **Show more** loads older items.",
     ],
     go: { page: "user", section: "mine" },
@@ -331,7 +331,7 @@ export const GUIDES = [
     title: "Manage user accounts",
     summary: "Roles, deactivating, password resets and deleting accounts.",
     steps: [
-      "Open **User Panel → Manage users** and click **Manage** on the person.",
+      "Open **User Panel → Manage Users** and click **Manage** on the person.",
       "**Make admin** / **Remove admin** changes their role. **Deactivate** stops them signing in but keeps their history.",
       "**Reset password** gives a temporary password (shown once); they choose a new one at sign-in.",
       "**Delete account** is permanent: type their username to confirm. Deactivating is usually better.",
@@ -340,11 +340,11 @@ export const GUIDES = [
     go: { page: "user", section: "users" },
   },
   {
-    id: "who-is-online", cat: "account", roles: "all",
+    id: "who-is-online", cat: "account", roles: "staff",
     title: "See who is active",
     summary: "Who has the app open right now, and who is idle.",
     steps: [
-      "Open **User Panel → Active status**. The line above the list counts who is **active**, **idle** and **offline**.",
+      "Open **User Panel → Active Status**. The line above the list counts who is **active**, **idle** and **offline**.",
       "A **green dot** on someone's picture means they're using the app now. **Yellow** means it's open but they haven't clicked or typed for a few minutes.",
       "The **Online** column says **Active now**, **Idle**, or when they were **last seen** (hover for the exact time).",
       "Tick **Online now only** to list just the people who have the app open.",
@@ -354,6 +354,22 @@ export const GUIDES = [
       "Someone shows as offline about a minute after they close the app, lose their connection or sign out.",
     ],
     go: { page: "user", section: "online" },
+  },
+  {
+    id: "who-is-online-admin", cat: "admin", roles: "admin",
+    title: "See who is active",
+    summary: "Who has the app open right now, who is idle, and when others were last seen.",
+    steps: [
+      "Open **User Panel → Manage Users**. The line above the list counts who is **active**, **idle** and **offline**.",
+      "A **green dot** on someone's picture means they're using the app now. **Yellow** means it's open but they haven't clicked or typed for a few minutes.",
+      "The **Online** column says **Active now**, **Idle** (and when they last used the app), or when they were **last seen**, with their last sign-in below.",
+      "Tick **Online now only** to list just the people who have the app open.",
+    ],
+    tips: [
+      "It updates by itself every 30 seconds.",
+      "Staff see the same online status (without sign-in times) in their **Active Status** tab.",
+    ],
+    go: { page: "user", section: "users" },
   },
   {
     id: "backups", cat: "admin", roles: "admin",

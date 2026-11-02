@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { fmtStamp } from "../utils/format";
 import Avatar from "./Avatar";
 
-// Admins: staff asking to change their full name. Shown above the user list in Manage users.
+// Admins: staff asking to change their full name. Shown above the user list in Manage Users.
 export default function NameRequests({ api, version, onChanged }) {
   const [items, setItems] = useState(null);
   const [notes, setNotes] = useState({});

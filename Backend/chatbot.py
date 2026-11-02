@@ -576,7 +576,7 @@ _GUIDE_COMMON = (
 _GUIDE_USER = (
     "- Edit an entry: click 'Request edit' on it; an admin approves or rejects the change.\n"
     "- Remove an entry: click 'Request archive' and give a reason; an admin decides.\n"
-    "- See what happened to your requests: User Panel (My requests).\n"
+    "- See what happened to your requests: User Panel (My Requests).\n"
     "- Change your full name: User Panel > Edit next to your name > Request change; it changes once an admin "
     "approves it.\n"
     "- Only admins can import files, archive projects or restore archived items.\n"
@@ -590,7 +590,7 @@ _GUIDE_ADMIN = (
     "- Review staff requests and password resets: Activity Log > Requests / Password resets.\n"
     "- Import entries from a CSV: 'Import File' in Voucher Control.\n"
     "- Manage accounts (approve new accounts and name changes, roles, deactivate, reset password, delete): "
-    "User Panel > Manage users tab.\n"
+    "User Panel > Manage Users tab.\n"
 )
 
 

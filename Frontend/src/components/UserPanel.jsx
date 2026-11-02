@@ -34,8 +34,8 @@ export default function UserPanel({
   };
 
   // Admins: open on whatever needs them. Activity Log if requests/resets are waiting,
-  // otherwise Manage users if an account is waiting, otherwise Activity Log.
-  // Staff open on My requests.
+  // otherwise Manage Users if an account is waiting, otherwise Activity Log.
+  // Staff open on My Requests.
   const [section, setSection] = useState(() =>
     initialSection ||
     (!isAdmin
@@ -48,14 +48,13 @@ export default function UserPanel({
   const tabs = isAdmin
     ? [
         { key: "activity", label: "Activity Log", count: (pending?.requests || 0) + (pending?.resets || 0) },
-        { key: "users", label: "Manage users", count: waitingAccounts },
-        { key: "mine", label: "My activity", count: 0 },
-        { key: "online", label: "Active status", count: 0 },
+        { key: "users", label: "Manage Users", count: waitingAccounts },
+        { key: "mine", label: "My Activity", count: 0 },
       ]
     : [
-        { key: "requests", label: "My requests", count: pending?.responses || 0 },
-        { key: "mine", label: "My activity", count: 0 },
-        { key: "online", label: "Active status", count: 0 },
+        { key: "requests", label: "My Requests", count: pending?.responses || 0 },
+        { key: "mine", label: "My Activity", count: 0 },
+        { key: "online", label: "Active Status", count: 0 },
       ];
   const title = tabs.find((t) => t.key === section)?.label || "";
 

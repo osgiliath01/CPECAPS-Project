@@ -99,7 +99,7 @@ def test_new_name_shows_on_entries(client, admin, staff):
     assert row["id"] == e["id"] and row["created_by_name"] == "Juan Dela Cruz"
 
 
-# ---------- My activity, security, stats ----------
+# ---------- My Activity, security, stats ----------
 
 def test_my_activity_shows_only_my_things(client, staff, staff2):
     add_entry(client, staff, cv_no="CV-1")
