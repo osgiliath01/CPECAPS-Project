@@ -1,6 +1,8 @@
 """One signed-in device per account, the Allow/Block prompt, refresh and sign-out."""
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
+
 import models
 import sessions
 from tests.conftest import PASSWORD, login, logs, make_user
@@ -250,3 +252,36 @@ def test_exempt_account_shows_online_while_its_app_is_open(client, db, monkeypat
     assert status_of(client, admin, "loadtest")["presence"] == "active"
     set_user(db, uid, session_seen_at=ago(sessions.SESSION_STALE_SECONDS + 5))
     assert status_of(client, admin, "loadtest")["presence"] == "offline"
+
+
+def test_device_seen_is_written_at_most_every_15_seconds(client, db, staff):
+    """Each open app reports every 30 s; many at once for one account mustn't pile up writes."""
+    db.expire_all()
+    first = db.get(models.User, staff.id).session_seen_at
+    sessions.touch(db, staff.id, None)  # straight after sign-in: too soon, nothing written
+    db.commit()
+    db.expire_all()
+    assert db.get(models.User, staff.id).session_seen_at == first
+    set_user(db, staff.id, session_seen_at=ago(20))
+    sessions.touch(db, staff.id, None)
+    db.commit()
+    db.expire_all()
+    assert (datetime.now(timezone.utc) - db.get(models.User, staff.id).session_seen_at).total_seconds() < 5
+
+
+def test_touch_skips_a_locked_row_instead_of_waiting(client, db, staff):
+    import database
+    set_user(db, staff.id, session_seen_at=ago(60))
+    holder = database.SessionLocal()
+    try:
+        holder.query(models.User).filter_by(id=staff.id).with_for_update().one()  # row locked elsewhere
+        other = database.SessionLocal()
+        try:
+            other.execute(text("SET lock_timeout = '2s'"))
+            sessions.touch(other, staff.id, None)  # would raise after 2 s if it waited
+            other.commit()
+        finally:
+            other.close()
+    finally:
+        holder.rollback()
+        holder.close()

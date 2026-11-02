@@ -42,6 +42,18 @@ ACCOUNTS = {
 _tokens = {}  # account kind -> sign-in token, shared by all simulated users of that kind
 
 
+
+def _json(response):
+    """The response's JSON, or None if it isn't JSON (e.g. a web page, because --host doesn't
+    point at the backend). Reported as a failure where Locust allows it."""
+    try:
+        return response.json()
+    except ValueError:
+        if hasattr(response, "failure"):
+            text = (response.text or "")[:80].replace("\n", " ")
+            response.failure(f"not JSON ({response.status_code}, {response.headers.get('content-type', '?')}): {text}")
+        return None
+
 class AppUser(HttpUser):
     """What every simulated person does: sign in, keep a live connection, browse."""
 
@@ -60,7 +72,12 @@ class AppUser(HttpUser):
                 if r.status_code != 200:
                     r.failure(f"sign-in failed: {r.status_code} {r.text[:120]}")
                     raise RuntimeError(f"Sign-in failed for {username}: {r.status_code}")
-                _tokens[self.account] = r.json()["access_token"]
+                data = _json(r)
+                if not isinstance(data, dict) or "access_token" not in data:
+                    raise RuntimeError(f"Sign-in for {username} didn't reach the backend: got "
+                                       f"{r.headers.get('content-type', '?')} from {r.url}. Check that "
+                                       "--host ends with /api (e.g. http://<server>/api).")
+                _tokens[self.account] = data["access_token"]
         return _tokens[self.account]
 
     def _auth(self):
@@ -108,8 +125,9 @@ class AppUser(HttpUser):
     def open_dashboard(self):
         """Voucher Control, as the screens load it: the project list and the voucher list."""
         r = self.api("GET", "/projects", name="/projects")
-        if r.status_code == 200:
-            self._projects = [p["title"] for p in r.json()]
+        data = _json(r) if r.status_code == 200 else None
+        if isinstance(data, list):
+            self._projects = [p["title"] for p in data]
         self.api("GET", "/disbursements/", name="/disbursements/ (voucher list)")
 
     def open_project(self):

@@ -23,7 +23,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 import activity
@@ -110,10 +110,20 @@ def touch(db: Session, user_id: int, sid: Optional[str]) -> None:
     """Notes that the device with this session is still there (called by the live connection).
     Accounts without a session (exempt from the one-device rule, e.g. load-test accounts) are
     noted too, so Active Status can still show them as online."""
-    query = db.query(models.User).filter(models.User.id == user_id)
+    # Written at most every TOUCH_SECONDS / 2 per account, and never waiting for the row: a shared
+    # account (e.g. hundreds of load-test users) would otherwise queue up on one row, each waiting
+    # request holding a database connection until the pool runs out.
+    recently = _now() - timedelta(seconds=TOUCH_SECONDS / 2)
+    target = db.query(models.User.id).filter(
+        models.User.id == user_id,
+        or_(models.User.session_seen_at.is_(None), models.User.session_seen_at < recently),
+    )
     if sid:
-        query = query.filter(models.User.session_id == sid)
-    query.update({models.User.session_seen_at: _now()}, synchronize_session=False)
+        target = target.filter(models.User.session_id == sid)
+    target = target.with_for_update(skip_locked=True)
+    db.query(models.User).filter(models.User.id.in_(target.scalar_subquery())).update(
+        {models.User.session_seen_at: _now()}, synchronize_session=False
+    )
 
 
 def describe_device(user_agent: str) -> str:
