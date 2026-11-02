@@ -562,9 +562,9 @@ A sign-in ends after **30 minutes without activity**, not 30 minutes after signi
 - **Mark as done ✓** ticks a guide off. Progress (*5 of 24 done*) is remembered in that browser for each user; **Reset** clears it.
 - **Keeping it current:** button and label names in the steps are written exactly as they appear in the app (shown in bold). When a screen changes, update its guide in `help/guides.js`.
 
-### 4.17c Who is online
+### 4.17c Active status (who is online)
 
-**User Panel → Who's online** (everyone) and **Manage users** (admins) show who has the app open:
+**User Panel → Active status** (everyone) and **Manage users** (admins) show who has the app open:
 
 - A line above the list counts **active**, **idle** and **offline** accounts; **Online now only** filters the list.
 - **Active** (green dot on the picture): the app is open and was used (clicks, typing, scrolling) in the last ~7 minutes. **Idle** (yellow): open, but not used for longer. **Offline**: closed, signed out or disconnected for over a minute; the **Online** column then says when they were last seen.

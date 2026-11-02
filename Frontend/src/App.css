@@ -313,7 +313,8 @@ button { cursor: pointer; }
 .presence-text.idle { color: #8a6300; }
 .online-summary { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; align-items: center; margin: 0 0 0.7rem; font-size: 0.92rem; }
 .online-count { display: inline-flex; align-items: center; gap: 0.35rem; }
-.log-filters .online-toggle { margin: 0; }
+.log-filters .online-toggle { margin: 0; flex: 0 0 auto; white-space: nowrap; }
+.log-filters .online-toggle input { width: 1.05rem; height: 1.05rem; padding: 0; flex: none; }
 /* User Panel: sign-in security and My activity */
 .security { width: 100%; margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--line); text-align: left; }
 .security-title { margin: 0 0 0.3rem; font-size: 0.95rem; }

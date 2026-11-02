@@ -50,12 +50,12 @@ export default function UserPanel({
         { key: "activity", label: "Activity Log", count: (pending?.requests || 0) + (pending?.resets || 0) },
         { key: "users", label: "Manage users", count: waitingAccounts },
         { key: "mine", label: "My activity", count: 0 },
-        { key: "online", label: "Who's online", count: 0 },
+        { key: "online", label: "Active status", count: 0 },
       ]
     : [
         { key: "requests", label: "My requests", count: pending?.responses || 0 },
         { key: "mine", label: "My activity", count: 0 },
-        { key: "online", label: "Who's online", count: 0 },
+        { key: "online", label: "Active status", count: 0 },
       ];
   const title = tabs.find((t) => t.key === section)?.label || "";
 

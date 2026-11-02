@@ -341,10 +341,10 @@ export const GUIDES = [
   },
   {
     id: "who-is-online", cat: "account", roles: "all",
-    title: "See who is online",
+    title: "See who is active",
     summary: "Who has the app open right now, and who is idle.",
     steps: [
-      "Open **User Panel → Who's online**. The line above the list counts who is **active**, **idle** and **offline**.",
+      "Open **User Panel → Active status**. The line above the list counts who is **active**, **idle** and **offline**.",
       "A **green dot** on someone's picture means they're using the app now. **Yellow** means it's open but they haven't clicked or typed for a few minutes.",
       "The **Online** column says **Active now**, **Idle**, or when they were **last seen** (hover for the exact time).",
       "Tick **Online now only** to list just the people who have the app open.",
