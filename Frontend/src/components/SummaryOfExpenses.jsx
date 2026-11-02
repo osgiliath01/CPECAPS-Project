@@ -190,8 +190,8 @@ export default function SummaryOfExpenses({
                   <SelectOne id={e.id} selection={selection} label={`Select CV# ${e.cv_no}`} />
                 </td>
                 <td>{fmtDate(e.date)}</td>
-                <td>{e.cv_no}</td>
-                <td>{e.payee}</td>
+                <td className="wrap">{e.cv_no}</td>
+                <td className="wrap">{e.payee}</td>
                 <td className="amount">{money(e.amount)}</td>
                 <td className="small">
                   <div className="who">
