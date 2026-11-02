@@ -223,6 +223,10 @@ button { cursor: pointer; }
 .vtable td.small { font-size: 0.85rem; }
 .vtable tfoot th { text-align: right; }
 .vtable tfoot th, .vtable tfoot td { font-weight: 700; font-size: 1.1rem; }
+.vtable td.wrap {
+  max-width: 24rem;
+  overflow-wrap: anywhere;
+}
 .confirm { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.95rem; }
 .panel-msg { text-align: center; margin: 2rem 0 0; color: var(--ink); }
 

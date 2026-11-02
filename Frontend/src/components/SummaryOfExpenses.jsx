@@ -102,8 +102,8 @@ export default function SummaryOfExpenses({ summary, q, isAdmin, onBack, onNew, 
             {pg.pageItems.map((e) => (
               <tr key={e.id}>
                 <td>{fmtDate(e.date)}</td>
-                <td>{e.cv_no}</td>
-                <td>{e.payee}</td>
+                <td className="wrap">{e.cv_no}</td>
+                <td className="wrap">{e.payee}</td>
                 <td className="amount">{money(e.amount)}</td>
                 <td className="small">
                   {e.created_by_name || e.created_by.split(" | ").pop()}
