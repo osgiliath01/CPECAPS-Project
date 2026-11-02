@@ -562,6 +562,15 @@ A sign-in ends after **30 minutes without activity**, not 30 minutes after signi
 - **Mark as done ✓** ticks a guide off. Progress (*5 of 24 done*) is remembered in that browser for each user; **Reset** clears it.
 - **Keeping it current:** button and label names in the steps are written exactly as they appear in the app (shown in bold). When a screen changes, update its guide in `help/guides.js`.
 
+### 4.17c Who is online
+
+**User Panel → Who's online** (everyone) and **Manage users** (admins) show who has the app open:
+
+- A line above the list counts **active**, **idle** and **offline** accounts; **Online now only** filters the list.
+- **Active** (green dot on the picture): the app is open and was used (clicks, typing, scrolling) in the last ~7 minutes. **Idle** (yellow): open, but not used for longer. **Offline**: closed, signed out or disconnected for over a minute; the **Online** column then says when they were last seen.
+- How it works: an open app keeps its live connection, which marks the device as seen every 30 s (`session_seen_at`, see 4.17). Renewing the sign-in after real activity (about every 5 minutes of use, see 4.17a) stamps the new `users.last_active_at` column. `GET /users` returns `presence` (`active` / `idle` / `offline`), `last_seen` and `last_active`. The list refreshes every 30 s while it's open.
+- Staff use `GET /users/online` (any signed-in user): approved, active accounts with name, username, role, picture and `presence` / `last_seen` only, active first. Admins' `GET /users` adds `last_active` and the last sign-in.
+
 ### 4.20 Security hardening
 
 | What | Where | Setting |

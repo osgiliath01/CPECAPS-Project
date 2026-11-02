@@ -42,6 +42,9 @@ ABANDONED_SECONDS = 12       # the new device checks every 2 s; silent this long
 # A sign-in lasts this long without activity. While the person is using the app, the app
 # renews it in the background (POST /auth/refresh), so only idle sessions expire.
 TOKEN_MINUTES = int(os.getenv("SESSION_IDLE_MINUTES", "30"))
+# The app renews the sign-in about every 5 minutes while someone is using it (clicks, typing,
+# scrolling), which updates last_active_at. Nothing for longer than this while the app is open = Idle.
+IDLE_AFTER_SECONDS = 7 * 60
 
 
 def _now() -> datetime:
@@ -60,8 +63,24 @@ def session_is_live(user: models.User) -> bool:
     return bool(user.session_id and seen and (_now() - seen).total_seconds() < SESSION_STALE_SECONDS)
 
 
+def presence(user: models.User) -> dict:
+    """For Manage users: "active" (app open and in use), "idle" (app open, not used for a few
+    minutes), or "offline", with when the account was last seen and last used."""
+    seen = _aware(user.session_seen_at)
+    used = _aware(user.last_active_at)
+    if session_is_live(user):
+        if used and (_now() - used).total_seconds() < IDLE_AFTER_SECONDS:
+            state = "active"
+        else:
+            state = "idle"
+    else:
+        state = "offline"
+    return {"presence": state, "last_seen": seen, "last_active": used}
+
+
 def start_session(user: models.User) -> Optional[str]:
     """Makes this sign-in the account's only session. None if the rule doesn't apply."""
+    user.last_active_at = _now()
     if not security.single_session_applies(user):
         return None
     user.session_id = secrets.token_urlsafe(16)
@@ -279,6 +298,7 @@ def deny_login(
 @router.post("/auth/refresh")
 def refresh_token(
     token: str = Depends(security.oauth2_scheme),
+    db: Session = Depends(database.get_db),
     current_user: models.User = Depends(security.get_current_user_allow_temporary),
 ):
     """Swaps a sign-in that's still valid for a fresh one (same device session), so someone
@@ -286,6 +306,8 @@ def refresh_token(
     (clicks, typing, scrolling); an idle session is left to expire. An expired, replaced
     or signed-out token is refused (401) like everywhere else."""
     claims = security.token_claims(token)
+    current_user.last_active_at = _now()  # renewals only follow real activity: shows as Active
+    db.commit()
     return {"access_token": issue_token(current_user, claims.get("sid")), "token_type": "bearer"}
 
 

@@ -205,6 +205,8 @@ export function createApi(tokenSource, onUnauthorized) {
     // User management (admins only). resetUserPassword returns the one-time temporary password.
     listUsers: () => call("/users"),
     listPendingUsers: () => call("/users/pending"),
+    // Anyone signed in: who has the app open
+    listOnline: () => call("/users/online"),
 
     // Own profile: picture and name. Staff name changes wait for an admin.
     getProfile: () => call("/me/profile"),

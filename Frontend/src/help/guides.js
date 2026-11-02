@@ -340,6 +340,22 @@ export const GUIDES = [
     go: { page: "user", section: "users" },
   },
   {
+    id: "who-is-online", cat: "account", roles: "all",
+    title: "See who is online",
+    summary: "Who has the app open right now, and who is idle.",
+    steps: [
+      "Open **User Panel → Who's online**. The line above the list counts who is **active**, **idle** and **offline**.",
+      "A **green dot** on someone's picture means they're using the app now. **Yellow** means it's open but they haven't clicked or typed for a few minutes.",
+      "The **Online** column says **Active now**, **Idle**, or when they were **last seen** (hover for the exact time).",
+      "Tick **Online now only** to list just the people who have the app open.",
+    ],
+    tips: [
+      "It updates by itself every 30 seconds.",
+      "Someone shows as offline about a minute after they close the app, lose their connection or sign out.",
+    ],
+    go: { page: "user", section: "online" },
+  },
+  {
     id: "backups", cat: "admin", roles: "admin",
     title: "Check that backups are running",
     summary: "The nightly encrypted backup and what its colours mean.",

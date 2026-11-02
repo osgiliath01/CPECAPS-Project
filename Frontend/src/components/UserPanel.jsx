@@ -9,6 +9,7 @@ import BackupStatus from "./BackupStatus";
 import { ActivityLogContent } from "./ActivityLog";
 import { MyRequestsContent } from "./MyRequests";
 import { UsersContent } from "./UsersDialog";
+import OnlineUsers from "./OnlineUsers";
 import { CountBadge } from "./AdminMenu";
 
 export default function UserPanel({
@@ -49,10 +50,12 @@ export default function UserPanel({
         { key: "activity", label: "Activity Log", count: (pending?.requests || 0) + (pending?.resets || 0) },
         { key: "users", label: "Manage users", count: waitingAccounts },
         { key: "mine", label: "My activity", count: 0 },
+        { key: "online", label: "Who's online", count: 0 },
       ]
     : [
         { key: "requests", label: "My requests", count: pending?.responses || 0 },
         { key: "mine", label: "My activity", count: 0 },
+        { key: "online", label: "Who's online", count: 0 },
       ];
   const title = tabs.find((t) => t.key === section)?.label || "";
 
@@ -125,6 +128,8 @@ export default function UserPanel({
             <h2 className="panel-title">{title}</h2>
             {section === "mine" ? (
               <MyActivity api={api} version={version} />
+            ) : section === "online" ? (
+              <OnlineUsers api={api} user={user} version={version} />
             ) : section === "requests" ? (
               <MyRequestsContent api={api} version={version} onSeen={onSeen} />
             ) : section === "users" ? (

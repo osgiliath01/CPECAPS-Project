@@ -13,6 +13,7 @@ import database
 import models
 import password_resets
 import security
+import sessions
 
 router = APIRouter(prefix="/users", tags=["User Management"])
 
@@ -28,6 +29,9 @@ class ManagedUser(BaseModel):
     created_at: datetime
     last_login: Optional[datetime]
     avatar_version: Optional[str] = None
+    presence: str = "offline"              # "active", "idle" or "offline" (see sessions.presence)
+    last_seen: Optional[datetime] = None   # app last open on their device
+    last_active: Optional[datetime] = None # last used (clicks, typing), about every 5 minutes
 
 
 class PendingAccount(BaseModel):
@@ -98,9 +102,44 @@ def list_users(
             "avatar_version": pictures.get(u.id),
             "created_at": u.created_at,
             "last_login": last_logins.get(u.username),
+            **sessions.presence(u),
         }
         for u in users
     ]
+
+
+class OnlineUser(BaseModel):
+    id: int
+    name: str
+    username: str
+    is_superuser: bool
+    avatar_version: Optional[str] = None
+    presence: str                          # "active", "idle" or "offline"
+    last_seen: Optional[datetime] = None
+
+
+@router.get("/online", response_model=List[OnlineUser])
+def who_is_online(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Anyone signed in: the team's accounts with who has the app open (active first, then
+    idle, then most recently seen). Only names, pictures and online status; nothing else."""
+    pictures = {uid: changed.isoformat() for uid, changed in db.query(models.UserAvatar.user_id, models.UserAvatar.updated_at)}
+    users = (
+        db.query(models.User)
+        .filter(models.User.is_approved.is_(True), models.User.is_active.is_(True))
+        .all()
+    )
+    rows = []
+    for u in users:
+        p = sessions.presence(u)
+        rows.append({"id": u.id, "name": u.name, "username": u.username, "is_superuser": u.is_superuser,
+                     "avatar_version": pictures.get(u.id), "presence": p["presence"], "last_seen": p["last_seen"]})
+    order = {"active": 0, "idle": 1, "offline": 2}
+    far_past = datetime.min.replace(tzinfo=timezone.utc)
+    rows.sort(key=lambda r: (order[r["presence"]], -(r["last_seen"] or far_past).timestamp(), r["name"].lower()))
+    return rows
 
 
 @router.get("/pending", response_model=List[PendingAccount])

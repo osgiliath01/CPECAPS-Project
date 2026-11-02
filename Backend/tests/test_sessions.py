@@ -179,3 +179,61 @@ def test_describe_device():
     assert sessions.describe_device("Mozilla/5.0 (Windows NT 10.0) Chrome/130 Safari/537 Edg/130") == "Edge on Windows"
     assert sessions.describe_device("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari/604") == "Safari on iPhone/iPad"
     assert sessions.describe_device("") == "A browser on an unknown device"
+
+
+# ---------- Online status (Manage users) ----------
+
+def status_of(client, admin, username):
+    return next(u for u in client.get("/users", headers=admin.auth).json() if u["username"] == username)
+
+
+def test_signed_in_user_shows_as_active(client, admin, staff):
+    u = status_of(client, admin, "clerk")
+    assert u["presence"] == "active" and u["last_seen"] and u["last_active"]
+
+
+def test_never_signed_in_user_is_offline(client, admin):
+    make_user("newcomer")
+    u = status_of(client, admin, "newcomer")
+    assert u["presence"] == "offline" and u["last_seen"] is None
+
+
+def test_open_but_unused_shows_as_idle(client, db, admin, staff):
+    set_user(db, staff.id, last_active_at=ago(sessions.IDLE_AFTER_SECONDS + 60))
+    assert status_of(client, admin, "clerk")["presence"] == "idle"
+
+
+def test_using_the_app_makes_idle_user_active_again(client, db, admin, staff):
+    set_user(db, staff.id, last_active_at=ago(sessions.IDLE_AFTER_SECONDS + 60))
+    client.post("/auth/refresh", headers=staff.auth)  # the app renews only after real activity
+    assert status_of(client, admin, "clerk")["presence"] == "active"
+
+
+def test_closed_app_shows_as_offline_with_last_seen(client, db, admin, staff):
+    set_user(db, staff.id, session_seen_at=ago(sessions.SESSION_STALE_SECONDS + 5))
+    u = status_of(client, admin, "clerk")
+    assert u["presence"] == "offline" and u["last_seen"]
+
+
+def test_signed_out_user_is_offline(client, admin, staff):
+    client.post("/auth/logout", headers=staff.auth)
+    assert status_of(client, admin, "clerk")["presence"] == "offline"
+
+
+def test_staff_cannot_see_who_is_online(client, staff):
+    assert client.get("/users", headers=staff.auth).status_code == 403
+
+
+def test_staff_can_see_who_is_online(client, db, admin, staff):
+    make_user("away")
+    make_user("waiting", approved=False)
+    make_user("former", active=False)
+    set_user(db, admin.id, last_active_at=ago(sessions.IDLE_AFTER_SECONDS + 60))
+    rows = client.get("/users/online", headers=staff.auth).json()
+    assert [(r["username"], r["presence"]) for r in rows] == [("clerk", "active"), ("boss", "idle"), ("away", "offline")]
+    # names, pictures and status only
+    assert set(rows[0]) == {"id", "name", "username", "is_superuser", "avatar_version", "presence", "last_seen"}
+
+
+def test_who_is_online_needs_sign_in(client):
+    assert client.get("/users/online").status_code == 401

@@ -1,12 +1,15 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { fmtStamp } from "../utils/format";
+import { fmtStamp, timeAgo } from "../utils/format";
 import Avatar from "./Avatar";
 
 // Admin-only: every account, with controls for the selected one.
 // The content on its own, so it can sit inside a tab of the User Panel.
+const REFRESH_MS = 30 * 1000; // online status is re-checked this often while the list is open
+
 export function UsersContent({ api, user, version, onChanged }) {
   const [users, setUsers] = useState(null);
   const [q, setQ] = useState("");
+  const [onlineOnly, setOnlineOnly] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState("");
 
@@ -14,15 +17,33 @@ export function UsersContent({ api, user, version, onChanged }) {
     api.listUsers().then(setUsers, (e) => setError(e.message));
   }, [api, version]);
 
+  // Keep the online status current while the tab is visible
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") api.listUsers().then(setUsers, () => {});
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [api]);
+
   async function reload() {
     setUsers(await api.listUsers());
   }
 
+  const counts = useMemo(() => {
+    const c = { active: 0, idle: 0 };
+    (users || []).forEach((u) => {
+      if (u.presence in c) c[u.presence] += 1;
+    });
+    return c;
+  }, [users]);
+
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!users || !needle) return users;
-    return users.filter((u) => u.name.toLowerCase().includes(needle) || u.username.toLowerCase().includes(needle));
-  }, [users, q]);
+    let list = users;
+    if (list && onlineOnly) list = list.filter((u) => u.presence !== "offline");
+    if (!list || !needle) return list;
+    return list.filter((u) => u.name.toLowerCase().includes(needle) || u.username.toLowerCase().includes(needle));
+  }, [users, q, onlineOnly]);
 
   const selected = users?.find((u) => u.id === selectedId) || null;
 
@@ -57,20 +78,25 @@ export function UsersContent({ api, user, version, onChanged }) {
 
   return (
     <>
+      {users && <OnlineSummary counts={counts} total={users.length} />}
       <div className="log-filters">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or username" aria-label="Search users" />
+        <label className="feed-toggle online-toggle">
+          <input type="checkbox" checked={onlineOnly} onChange={(e) => setOnlineOnly(e.target.checked)} />
+          Online now only
+        </label>
       </div>
       {error && <p className="error">{error}</p>}
       {shown === null && !error ? (
         <p className="muted">Loading…</p>
       ) : shown?.length === 0 ? (
-        <p className="muted">No users found.</p>
+        <p className="muted">{onlineOnly && !q.trim() ? "Nobody has the app open right now." : "No users found."}</p>
       ) : (
         shown && (
           <div className="review-scroll">
             <table className="review-table">
               <thead>
-                <tr><th>User</th><th>Role</th><th>Status</th><th>Last sign-in</th><th /></tr>
+                <tr><th>User</th><th>Role</th><th>Status</th><th>Online</th><th /></tr>
               </thead>
               <tbody>
                 {shown.map((u) => (
@@ -78,7 +104,7 @@ export function UsersContent({ api, user, version, onChanged }) {
                     <tr key={u.id} className={u.id === selectedId ? "row-selected" : undefined}>
                       <td>
                         <div className="who">
-                          <Avatar api={api} userId={u.id} version={u.avatar_version} className="list-avatar" />
+                          <PresenceAvatar api={api} u={u} />
                           <div>
                             <strong>{u.name}</strong>
                             {u.id === user.id ? " (you)" : ""}
@@ -100,7 +126,9 @@ export function UsersContent({ api, user, version, onChanged }) {
                         )}
                         {u.must_change_password && <><br /><span className="small muted">Temporary password</span></>}
                       </td>
-                      <td className="nowrap small">{u.last_login ? fmtStamp(u.last_login) : <span className="muted">Never</span>}</td>
+                      <td className="small">
+                        <Presence u={u} />
+                      </td>
                       <td className="actions">
                         <button
                           className={`pill sm ${!u.is_approved && u.id !== selectedId ? "primary" : ""}`}
@@ -329,5 +357,62 @@ function UserDetails({ api, target, isSelf, onDone }) {
         </div>
       )}
     </section>
+  );
+}
+
+// "● 3 active  ● 1 idle  12 offline"
+export function OnlineSummary({ counts, total }) {
+  return (
+    <div className="online-summary">
+      <span className="online-count">
+        <span className="presence-dot active" aria-hidden="true" /> <strong>{counts.active}</strong> active
+      </span>
+      <span className="online-count">
+        <span className="presence-dot idle" aria-hidden="true" /> <strong>{counts.idle}</strong> idle
+      </span>
+      <span className="online-count muted">{total - counts.active - counts.idle} offline</span>
+    </div>
+  );
+}
+
+// A profile picture with a green (active) or yellow (idle) dot
+export function PresenceAvatar({ api, u }) {
+  return (
+    <span className="avatar-wrap">
+      <Avatar api={api} userId={u.id} version={u.avatar_version} className="list-avatar" />
+      {u.presence !== "offline" && (
+        <span className={`presence-dot ${u.presence} on-avatar`} title={u.presence === "active" ? "Active now" : "Idle"} />
+      )}
+    </span>
+  );
+}
+
+// Online status of one account: Active now / Idle / Last seen, plus the last sign-in (admins)
+export function Presence({ u }) {
+  const seen = u.last_seen || u.last_login;
+  let main;
+  if (u.presence === "active") {
+    main = <span className="presence-text active">Active now</span>;
+  } else if (u.presence === "idle") {
+    main = (
+      <span className="presence-text idle" title={u.last_active ? `Last used ${fmtStamp(u.last_active)}` : undefined}>
+        Idle{u.last_active ? ` · used ${timeAgo(u.last_active)}` : ""}
+      </span>
+    );
+  } else if (seen) {
+    main = <span title={fmtStamp(seen)}>Last seen {timeAgo(seen)}</span>;
+  } else {
+    main = <span className="muted">Never signed in</span>;
+  }
+  return (
+    <>
+      {main}
+      {u.last_login && (
+        <>
+          <br />
+          <span className="muted nowrap">Signed in {fmtStamp(u.last_login)}</span>
+        </>
+      )}
+    </>
   );
 }

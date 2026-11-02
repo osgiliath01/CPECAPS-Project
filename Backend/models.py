@@ -92,6 +92,9 @@ class User(Base):
     # device was last seen through its live connection
     session_id = Column(String(64), nullable=True)
     session_seen_at = Column(DateTime(timezone=True), nullable=True)
+    # Last time the person actually used the app (sign-in, or clicks/typing that renewed the
+    # sign-in, about every 5 minutes of use). With session_seen_at: Active / Idle / Offline.
+    last_active_at = Column(DateTime(timezone=True), nullable=True)
 
     # Audit fields
     created_at = Column(
