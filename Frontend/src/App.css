@@ -262,6 +262,10 @@ button { cursor: pointer; }
 .chat-msg.bot:has(.chat-table-wrap) { max-width: 100%; }
 .chat-text { display: block; }
 .chat-text + .chat-table-wrap, .chat-table-wrap + .chat-text { margin-top: 0.5rem; }
+.chat-heading { display: block; margin: 0.6rem 0 0.15rem; font-size: 1rem; }
+.chat-heading:first-child { margin-top: 0; }
+.chat-rule { border: 0; border-top: 1px solid var(--line); margin: 0.6rem 0; }
+.chat-heading + .chat-table-wrap, .chat-rule + .chat-table-wrap { margin-top: 0.3rem; }
 .chat-table-wrap { overflow-x: auto; max-width: 100%; white-space: normal; }
 .chat-table { border-collapse: collapse; font-size: 0.85rem; min-width: 100%; }
 .chat-table th, .chat-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }

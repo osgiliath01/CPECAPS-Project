@@ -1,5 +1,6 @@
 // Turns an assistant answer into paragraphs and real tables. Tables are written by the model
-// as Markdown-style lines with "|" between columns; **bold** is supported in normal text.
+// as Markdown-style lines with "|" between columns. In normal text: **bold**, headings
+// ("### Title" shows as a bold line, without the #), dividers ("---") and "* " bullets.
 const isTableLine = (line) => (line.match(/\|/g) || []).length >= 1 && line.trim().length > 1;
 const isSeparator = (cells) => cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c.replace(/\s/g, "")));
 const splitCells = (line) => {
@@ -53,6 +54,35 @@ function Table({ lines }) {
   );
 }
 
+const HEADING = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/;
+const RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
+
+// A text block line by line: headings and dividers get their own elements, the rest stays as
+// written (line breaks kept)
+function TextBlock({ text }) {
+  const out = [];
+  let plain = [];
+  const flush = () => {
+    const chunk = plain.join("\n").replace(/^\n+|\n+$/g, "");
+    if (chunk) out.push(<span key={out.length} className="chat-text"><Inline text={chunk} /></span>);
+    plain = [];
+  };
+  for (const line of text.split("\n")) {
+    const heading = line.match(HEADING);
+    if (heading) {
+      flush();
+      out.push(<strong key={out.length} className="chat-heading"><Inline text={heading[1].replace(/\*\*/g, "")} /></strong>);
+    } else if (RULE.test(line)) {
+      flush();
+      out.push(<hr key={out.length} className="chat-rule" />);
+    } else {
+      plain.push(line.replace(/^(\s*)[*+]\s+/, "$1• ").replace(/^(\s*)-\s+/, "$1• "));
+    }
+  }
+  flush();
+  return out;
+}
+
 export function FormattedAnswer({ text }) {
   const lines = text.split("\n");
   const blocks = [];
@@ -73,9 +103,7 @@ export function FormattedAnswer({ text }) {
     b.type === "table" ? (
       <Table key={k} lines={b.lines} />
     ) : (
-      <span key={k} className="chat-text">
-        <Inline text={b.text} />
-      </span>
+      <TextBlock key={k} text={b.text} />
     )
   );
 }
