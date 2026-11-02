@@ -69,6 +69,7 @@ export default function App() {
 
   function acceptToken(accessToken) {
     sessionStorage.setItem("token", accessToken);
+    tokenRef.current = accessToken; // so api calls made before the next render use it
     setSignedOutReason("");
     setToken(accessToken);
   }
@@ -104,7 +105,15 @@ export default function App() {
         user={user}
         onDone={async (newPassword) => {
           await api.endSession?.(); // this device's own session, so signing in again doesn't ask
-          return handleLogin(user.username, newPassword);
+          const waiting = await handleLogin(user.username, newPassword);
+          if (waiting) {
+            // Signed in elsewhere in the meantime: the new password works, sign in again normally
+            logout("Your password was changed. Sign in with your new password.");
+            return;
+          }
+          // The new sign-in replaces one that was still signed in here, so the "who am I" check
+          // above doesn't run again by itself: read the new token, or this screen stays on "Saving…"
+          setUser(await api.me());
         }}
         onLogout={signOut}
       />
